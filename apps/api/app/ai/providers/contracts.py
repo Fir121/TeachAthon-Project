@@ -4,11 +4,11 @@ from pydantic import BaseModel
 
 
 class TextModel(Protocol):
-    async def structured(self, prompt: str, schema: type[BaseModel]) -> BaseModel: ...
+    async def structured(self, prompt: str, schema: type[BaseModel], *, timeout: float = 60) -> BaseModel: ...
 
 
 class EmbeddingProvider(Protocol):
-    async def embed(self, texts: list[str]) -> list[list[float]]: ...
+    async def embed(self, texts: list[str], *, timeout: float = 60) -> list[list[float]]: ...
 
 
 class BatchTranscriber(Protocol):

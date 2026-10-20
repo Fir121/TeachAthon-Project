@@ -15,15 +15,17 @@ import { Failure } from "./CoursePage";
 import { Dialog, useDialog } from "./Dialog";
 export type Match = {
   source_id: string;
-  source_type: string;
-  question_id?: string;
-  page_number?: number | null;
+  source_type: "document" | "recording" | "discussion";
+  question_id?: string | null;
   title: string;
-  excerpt: string;
   url: string;
-  category: string;
-  start_ms?: number | null;
-  end_ms?: number | null;
+  locations: {
+    page_number: number | null;
+    start_ms: number | null;
+    end_ms: number | null;
+    url: string;
+  }[];
+  audio_available?: boolean | null;
   score: number;
 };
 export type Preflight = {
@@ -57,52 +59,59 @@ export type Question = {
     possibly_addressed?: boolean;
   };
 };
-const sourceLabels: Record<string, string> = {
-  relevant_material: "Course material",
-  relevant_lecture_explanation: "Recorded lecture",
-  relevant_lecture_transcript: "Lecture transcript",
-  existing_lecturer_answer: "Lecturer answer",
-  relevant_public_discussion: "Public discussion",
-  similar_public_question: "Similar public question",
-};
 function SourceMatch({
   match: m,
   onVote,
   voting,
 }: {
   match: Match;
-  onVote: (id: string) => void;
+  onVote: (id: string) => Promise<unknown>;
   voting: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
-  // Formatting only: retain source words, collapse PDF layout whitespace, render as plain text.
-  const excerpt = m.excerpt.replace(/\s+/g, " ").trim();
-  const shortened = excerpt.length > 420;
-  const visible =
-    expanded || !shortened
-      ? excerpt
-      : excerpt.slice(0, 420).replace(/\s+\S*$/, "") + "…";
-  const timed =
-    ["recording", "lecture_explanation"].includes(m.source_type) &&
-    typeof m.start_ms === "number" &&
-    Number.isFinite(m.start_ms);
+  const [voted, setVoted] = useState(false);
   const timestamp = (value: number) =>
     `${Math.floor(value / 60000)}:${String(Math.floor(value / 1000) % 60).padStart(2, "0")}`;
+  const labels = {
+    document: "Course material",
+    recording:
+      m.audio_available === false ? "Lecture transcript" : "Recorded teaching",
+    discussion: "Public discussion",
+  };
   return (
     <article className="match-card">
       <div className="source-meta">
-        <span>{sourceLabels[m.category] || "Course source"}</span>
-        {typeof m.page_number === "number" && <span>Page {m.page_number}</span>}
-        {timed && (
-          <span>
-            {timestamp(m.start_ms!)}
-            {typeof m.end_ms === "number" ? ` – ${timestamp(m.end_ms)}` : ""}
-          </span>
-        )}
+        <span>{labels[m.source_type]}</span>
       </div>
-      <h3>{m.title}</h3>
-      <p className="excerpt-label">Source excerpt</p>
-      <blockquote className="source-excerpt">{visible}</blockquote>
+      <h3>
+        <a href={m.url} target="_blank" rel="noreferrer">
+          {m.title}
+        </a>
+      </h3>
+      {m.locations.length > 0 && (
+        <nav
+          className="source-locations"
+          aria-label={`Matching locations in ${m.title}`}
+        >
+          {(expanded ? m.locations : m.locations.slice(0, 5)).map(
+            (location) => (
+              <a
+                className="source-location"
+                key={location.url}
+                href={location.url}
+                target="_blank"
+                rel="noreferrer"
+              >
+                {location.page_number !== null
+                  ? `Page ${location.page_number}`
+                  : location.start_ms !== null
+                    ? timestamp(location.start_ms)
+                    : "Open source"}
+              </a>
+            ),
+          )}
+        </nav>
+      )}
       <div className="source-actions">
         <a
           className="button secondary"
@@ -112,22 +121,31 @@ function SourceMatch({
         >
           Open source ↗
         </a>
-        {shortened && (
+        {m.locations.length > 5 && (
           <button
             className="text-button"
             aria-expanded={expanded}
             onClick={() => setExpanded(!expanded)}
           >
-            {expanded ? "Show less" : "Read full excerpt"}
+            {expanded
+              ? "Show fewer locations"
+              : `Show ${m.locations.length - 5} more locations`}
           </button>
         )}
-        {m.question_id && m.category === "similar_public_question" && (
+        {m.question_id && (
           <button
             className="secondary"
-            disabled={voting}
-            onClick={() => onVote(m.question_id!)}
+            disabled={voting || voted}
+            onClick={async () => {
+              try {
+                await onVote(m.question_id!);
+                setVoted(true);
+              } catch {
+                /* Shared error state offers retry. */
+              }
+            }}
           >
-            Upvote this existing question
+            {voted ? "Upvoted" : "Upvote this existing question"}
           </button>
         )}
       </div>
@@ -138,11 +156,12 @@ export function MatchCards({ matches }: { matches: Match[] }) {
   const vote = useAction((id: string) => api(`/questions/${id}/vote`, {}));
   return (
     <div className="match-list">
+      <Failure error={vote.error} />
       {matches.map((m) => (
         <SourceMatch
-          key={m.source_type + m.source_id + String(m.start_ms)}
+          key={m.source_type + m.source_id}
           match={m}
-          onVote={vote.mutate}
+          onVote={vote.mutateAsync}
           voting={vote.isPending}
         />
       ))}
@@ -281,6 +300,11 @@ export function AskFlow({
         </button>
       </form>
       <Failure error={preflight.error} />
+      {preflight.isPending && (
+        <p role="status" className="muted small spaced">
+          Checking course sources. This can take up to 30 seconds.
+        </p>
+      )}
       {result && (
         <div className="preflight-results">
           <h3>

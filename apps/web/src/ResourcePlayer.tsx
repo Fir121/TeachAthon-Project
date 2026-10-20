@@ -188,7 +188,7 @@ export default function ResourcePlayer() {
           )}
           <p className="viewer-help muted small">
             If the PDF cannot be rendered, choose “Use page images”. Search
-            excerpts refer to the page shown here.
+            results link to the matching pages.
           </p>
         </section>
       ) : isMedia ? (

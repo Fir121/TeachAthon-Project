@@ -1,7 +1,7 @@
 # Run and operate LectureLoop
 
 ## Local use
-Requires Docker with Compose, with about 4 GB RAM available and disk for media. Docker builds install LibreOffice and FFmpeg; the host does not need them.
+Requires Docker with Compose. Recommend **2+ CPU cores and 8 GB RAM available to Docker**, plus disk for original media, rendered pages and checkpoints. The tested ARM64 Docker environment has 7.746 GiB usable RAM; inference uses two CPU threads. Docker builds install Poppler, LibreOffice and FFmpeg; the host does not need them. Local deployment is the current verified target; no VM deployment has been performed.
 
 ```sh
 python3 scripts/configure.py
@@ -37,9 +37,28 @@ Only Caddy publishes ports; Postgres remains on the Compose network. API and wor
 
 ## Jobs, failures and storage
 
-Document conversion and indexing have separate visible states. Failed conversion has Retry processing; failed/missing embeddings have Rebuild search index. Jobs claim rows with SKIP LOCKED, retry three times with backoff, and recover processing leases after 15 minutes. Worker runs jobs sequentially. Process long recordings in bounded windows. User originals remain available during processing failures. Resource removal and indexing exclusion immediately filter search through current metadata even before cleanup.
+Rendering, OCR extraction and indexing have separate visible states. A prepared slide deck is usable as soon as rendering finishes. Failed conversion has Retry processing; failed/missing embeddings have Rebuild search index. Jobs claim rows with SKIP LOCKED, retry three times with backoff, and recover processing leases after 15 minutes. Worker runs jobs sequentially. OCR runs in checkpointed batches of five pages, releases inference memory between subprocesses, and yields to recording assembly before the next batch. The worker handles SIGTERM after saving its current operation; Compose allows 11 minutes for its bounded batch to finish. Expired processing leases recover after a crash. Process long recordings in bounded windows. User originals remain available during processing failures. Resource removal and indexing exclusion immediately filter search through current metadata even before cleanup.
 
 Upload limit: 100 MB per file, ingress limit 105 MB including multipart overhead; 500 rendered pages; archive recordings use 4-second browser chunks, max 5 MB each. Check disk with `docker system df` and `df -h`; alert before storage fills. Original media chunks are retained for recovery, so monitor volume growth. Deleted metadata is inaccessible through the API; orphan file garbage collection is not automatic. Review retained file directories during a maintenance window against database storage keys before removal. Do not prune volumes as a cleanup shortcut.
+
+
+## Local OCR provisioning, backfill and sizing
+
+Dependencies are pinned in `apps/api/uv.lock`; regenerate container requirements with `uv export --project apps/api --locked --format requirements-txt --no-hashes --no-emit-project` (add `--extra ocr` for the worker). The worker image installs the separately pinned `apps/api/requirements-ocr.lock`; API/migration images do not load the OCR runtime. Build provisioning downloads official ONNX model artifacts at the exact revisions in `app/ocr_models.json`, verifies `app/ocr_checksums.json`, and caches them at `/opt/lectureloop/models`. `cl100k_base` is cached under `/opt/lectureloop/tokenizer` in both images. Models/tokenizer are image layers, so normal source edits reuse the provisioning cache. Internet is needed to provision/rebuild uncached layers, **not** to OCR or chunk documents afterward. No document content is sent to model artifact hosts. OpenAI embeddings/STT/text features still require their configured provider; local OCR, chunking and keyword retrieval work without a key.
+
+Migration 0010 preserves existing usable data. Worker startup idempotently schedules old resources for versioned extraction/chunking backfill and old transcript/forum chunks for local reindexing. Per-page checkpoints live beside the private original under the extraction version directory. Source files and old searchable extraction stay available until the complete replacement is committed. Exclusion and current course permissions remain authoritative throughout. A failed batch retains completed pages; Retry processing resumes them. Rebuild search index retries missing embeddings independently. A ready index without a configured key means keyword-searchable text, not invented vectors. Monitor extraction progress in Resources; metadata is also available from `/api/v1/resources/{id}/status`.
+
+Measured in the local ARM64 environment (2026-10-20): authored five-page lean OCR batch **7.774 s / 1515.9 MiB peak RSS**, subsequent single-page batch **2.634 s / 1049 MiB**; full six-page rendering plus two extraction subprocesses **11.03 s**. A real existing-document batch peaked at **1626 MiB**, with the slowest observed batch **26.984 s**. After inference exits, observed idle worker/API/proxy/DB memory was approximately **123/86/23/79 MiB**. Image size reported by Docker was approximately **804 MB worker / 423 MB API**, with shared layers. These small samples are sizing evidence, not throughput promises for dense scans or concurrent classroom load. Keep the 8 GB recommendation and monitor RSS, CPU, queue delay and disk before increasing concurrency or upload/page limits.
+
+Retrieval budgets are `RETRIEVAL_TIMEOUT_SECONDS=20`, `QUERY_EMBEDDING_TIMEOUT_SECONDS=10` (inside retrieval) and `ANSWER_TIMEOUT_SECONDS=10` (optional generation after retrieval). Settings are bounded to keep preflight at most 30 seconds. Search/preflight route work runs in threads; PostgreSQL and provider deadlines are enforced. AI behaviour/storage details are maintained in [AI_WORKFLOW.md](AI_WORKFLOW.md).
+
+Provisioned offline verification (no key and no outbound network):
+
+```sh
+docker run --rm --network none lectureloop-worker python -m pytest -q -p no:cacheprovider
+```
+
+The test fixtures are authored digital/scanned/multicolumn/blank/rotated PDFs and a LibreOffice-converted deck. They verify five-page checkpoint/resume and atomic old-index replacement. Tests use temporary SQLite metadata; they do not modify the application's database or media volume.
 
 ## Backups and recovery
 
@@ -51,6 +70,8 @@ To restore into an empty deployment: start only db (`docker compose up -d db`), 
 
 ```sh
 uv sync --project apps/api
+# Provision the host tokenizer once; Docker images already include it.
+apps/api/.venv/bin/python -c 'import tiktoken; tiktoken.get_encoding("cl100k_base")'
 npm ci --prefix apps/web
 apps/api/.venv/bin/python -m pytest apps/api/tests -q
 npm --prefix apps/web run build
@@ -59,7 +80,7 @@ npm --prefix apps/web test
 cd apps/web && npx playwright install chromium && npm run test:e2e
 ```
 
-`docker compose exec -T api python -m pytest -q -p no:cacheprovider` includes actual FFmpeg tests that skip on hosts without FFmpeg. Unit tests disable real provider calls. `scripts/smoke.py` creates unique synthetic course content in the running stack. Playwright creates isolated accounts, uses a disclosed synthetic microphone test device and validates actual browser encoding, uploads, assembly and playback. `RUN_OPENAI_SMOKE=1` and the documented provider smoke script separately exercise paid model APIs. No canned AI responses are used in application code. No licensed third-party lecture demo has been collected; M7 is optional after the working core.
+`docker compose exec -T api python -m pytest -q -p no:cacheprovider` includes actual Poppler/LibreOffice/FFmpeg tests; the worker-image offline command above also runs real ONNX OCR. Host-only runs skip unavailable Linux/OCR tools. Unit tests disable real provider calls. `scripts/smoke.py` creates unique synthetic course content in the running stack. Playwright creates isolated accounts, uses a disclosed synthetic microphone test device and validates actual browser encoding, uploads, assembly and playback. `RUN_OPENAI_SMOKE=1` and the documented provider smoke script separately exercise paid model APIs. No canned AI responses are used in application code. No licensed third-party lecture demo has been collected; M7 is optional after the working core.
 
 To rerun paid provider/domain checks with an authorized short test recording, copy a 24 kHz PCM16 WAV into the API container and run `docker compose exec -e RUN_OPENAI_SMOKE=1 api python -m app.provider_smoke /tmp/speech.wav`. To exercise extraction, optional summaries, private/public semantic grouping and MP3 ingestion through actual REST routes, run `RUN_OPENAI_SMOKE=1 apps/api/.venv/bin/python scripts/integration_smoke.py /path/to/authorized-generated-speech.mp3`. Those checks create clearly named synthetic fixture accounts/courses; the fixture course is removed afterward. No real key is printed.
 
@@ -68,3 +89,7 @@ For the full browser speech gate, set `LIVE_AUDIO_FIXTURE=/absolute/path/to/auth
 Additional browser-engine smoke: install WebKit with `cd apps/web && npx playwright install webkit`, then from the repository root run `E2E_BROWSER=webkit npm --prefix apps/web run test:e2e -- --grep 'lecturer and mobile'`. This covers the classroom flow in the WebKit engine; physical Safari/iOS microphone hardware is a separate manual check.
 
 Earlier validation runs left courses clearly named `Smoke course …`, `Browser course …` and `Recording …`. They contain actual persisted synthetic test activity and generated speech, not application seed data or fabricated provider output. New tests remove their exact freshly created course IDs. Historical cleanup by pattern was rejected by automatic approval review, so those earlier records remain intact; do not delete arbitrary courses based on labels alone.
+
+The grouped-source browser journey uses the authored six-page `e2e/search-pages.pdf`; it verifies deduplication, five-location expansion, PDF page 6, both preflight screens and explicit recovery after an injected transport failure. For real imported-media timestamp playback in Chromium/WebKit, provide `SOURCE_AUDIO_FIXTURE=/absolute/path/to/authorized-speech-longer-than-30s.mp3`; the test calls actual batch STT and follows the 0:30 link. The verification here used a 40-second repetition of authored generated speech, not a third-party lecture. Example: `E2E_BROWSER=webkit SOURCE_AUDIO_FIXTURE=/tmp/lectureloop-source-speech.mp3 npm --prefix apps/web run test:e2e -- --grep 'workspace dialogs|lecturer and mobile|grouped source links|recording search groups'`.
+
+Profile pictures and course/lecture banners are local private media, outside the resource/OCR pipeline. They accept decoded JPEG/PNG/WebP up to 5 MB and 20 MP, strip metadata and store bounded WebP derivatives. Their references are added by migration 0011. Profile controls are available from the avatar button; course banners in course settings; lecture banners on lecture setup. Include these media files in the existing volume backup. Course keyword search uses local Snowball stemming, does not require provider credentials, and requires all significant terms within one passage (80-word span for multiword searches) or the source title. Question preflight remains hybrid.

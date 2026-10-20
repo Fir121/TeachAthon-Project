@@ -12,3 +12,5 @@
 10. Maintain tests for core logic and permissions. Run migrations, backend/frontend checks and E2E smoke tests after major milestones; report genuine blockers and remaining work in `docs/PROGRESS.md`.
 11. The deadline matters: build runnable core first, add remaining committed features progressively, never sacrifice data privacy or secretly degrade to simulation. Do not focus on CS50 demo until the product works; afterward create optional prepared replay fixture with clear disclosure.
 12. Do not use any copyrighted university lecture recordings without suitable authorisation. External demo data must be permissioned / licensed and credited; never ship third-party material in git by default.
+
+13. Any change to AI behaviour (including OCR/chunking, prompts, retrieval, provider inputs, storage, visibility, timeouts or user interactions) must update `docs/AI_WORKFLOW.md` in the same change. It is the canonical implementation reference; `AI_WORKFLOW_REVIEW.md` is only a pointer.

@@ -118,3 +118,64 @@ Final local Chromium gate: `LIVE_AUDIO_FIXTURE=/tmp/lectureloop-speech.wav npm -
 Final Linux backend: `docker compose exec -T api python -m pytest -q -p no:cacheprovider` — **23 passed**. Host backend **21 passed, 2 skipped** for Linux conversion tools. Frontend **7 passed**; TypeScript/production build, formatting and isolated runtime/static checks passed. `docker compose up --build -d` completed successfully with Postgres/API healthy and worker/proxy running. The served OpenAPI contract was re-exported; inventory includes 93 HTTP operations plus two WebSockets. Local-only deployment remains http://localhost:8080; no new credentials or VM are needed for this revision.
 
 Cross-browser completion: WebKit exposed mouse-click/history focus restoration differences; dialogs now record their actual trigger and restore it explicitly. `E2E_BROWSER=webkit npm --prefix apps/web run test:e2e -- --grep 'workspace dialogs|lecturer and mobile' --output=/tmp/lectureloop-webkit-results` — **2 passed (15.2s)**, including the real PDF.js viewer. The final affected Chromium rerun also passed **2/2 (18.0s)**. Ready endpoint returned `{status: ready}`; API/Postgres healthy, worker/Caddy running. This UX revision is complete locally. PDF extraction/chunking/ranking and other AI workflow decisions are documented for owner review rather than silently redesigned.
+
+## PaddleOCR ingestion and grouped source search — 2026-10-20
+
+Implementation stage: **complete and verified locally**. Confirmed lean CPU profile applied; no unresolved product blocker or missing credential.
+
+- Added migration 0010 for versioned extraction checkpoints/chunk offsets. Removed application PyMuPDF use; Poppler renders physical pages and LibreOffice still converts Office files. PaddleOCR PP-StructureV3 runs with pinned official ONNX CPU artifacts (mobile det/rec, layout plus-L), with SHA-256 verification, two threads, five-page checkpoint batches and priority for recording assembly. Rendering stays usable during extraction/backfill.
+- Local semchunk 4.1.1 / cached cl100k_base: 512 tokens, 64 overlap, source offsets; documents split per physical page, TXT/JSON never acquire fake pages. Existing extraction and chunks stay live until atomic replacement.
+- Typed grouped source links replace public chunk excerpts in course search and both preflight UIs. Internal text remains available for ranking and optional grounding. Eight parents after grouping; page/time links deduplicated; five locations initially. Optional answers remain off by default.
+- Retrieval/embedding/generation budgets are 20/10/10 seconds. SQL/ranking uses its own thread/session, provider deadlines are bounded, PostgreSQL statements use remaining time, failed preflight returns an explicit post proof.
+- Canonical AI_WORKFLOW.md created; review worksheet replaced by pointer; AGENTS.md requires documentation maintenance with future behaviour changes.
+
+Checked so far:
+
+- Host backend: `apps/api/.venv/bin/python -m pytest apps/api/tests -q` — 26 passed, 4 Linux-tool/OCR skips.
+- Offline Linux worker: `docker run --rm -i --network none -v "$PWD/apps/api:/app:ro" lectureloop-worker python ... pytest.main(...)` — **30 passed**, 17.19 s. Actual digital/scanned/multicolumn/blank/rotated-cropped PDF and converted PPTX OCR; token limits/offset/content preservation; five-page checkpoint, injected second-batch failure, resume, old-index preservation, assembly priority; privacy/group/deadline tests. No OpenAI key or outbound access used in this suite.
+- Authored OCR: five pages 7.703 s, peak 1501.2 MiB RSS; subsequent single page 2.507 s / 1046.3 MiB, converted PPTX 2.497 s / 928.3 MiB. Six-page render+two batch processes 10.82 s.
+- `npm --prefix apps/web run build` and `npm --prefix apps/web test` — build passed, 7 tests passed. Fatal Python lint checks passed.
+- Local `docker compose up --build -d` and migration 0010 succeeded; `/api/ready` ready. Real `SELECT pg_sleep(2)` under a 0.1 s statement budget cancelled at 0.104 s.
+- Backfill: 14/15 existing PDFs complete at this checkpoint. The remaining 17-page PDF resumed from its saved batch artifacts after an old-image replacement; only that old-worker lease (heartbeat before replacement startup) was released. Final worker now handles SIGTERM gracefully and Compose permits the batch to finish before shutdown. Current real-content batch peak 1626.0 MiB; slowest batch observed 26.984 s. Originals/course permissions/exclusions retained.
+- Subsequent Chromium/WebKit and final backfill completion evidence is recorded below; deployment remains local only.
+
+Final verification:
+
+- Final host backend: **27 passed, 4 skips**; final offline native ARM64 Linux worker: **31 passed**, 17.89 s. A stronger follow-up reading-order assertion (the whole left column precedes the right column) passed the real six-page OCR/checkpoint test in 10.16 s.
+- Final frontend build and **7 unit tests passed**; fatal Python lint checks passed. The running OpenAPI export now describes SourceGroup/SourceLocation and explicitly omits chunk text/excerpts.
+- Chromium: **4 core journeys passed**, 50.9 s (classroom privacy, real microphone captions/recording/replay, grouped PDF/preflight flows, workspace/PDF viewer). Separate real batch-STT/nonzero media timestamp journey **passed**, 6.1 s: **5 Chromium journeys total**.
+- WebKit: classroom, grouped PDF/preflight and workspace journeys **3 passed**; separate real batch-STT/nonzero media timestamp journey **passed**, 6.7 s: **4 WebKit journeys total**. Verified the original source player opens and plays from the actual ~30-second input-window boundary.
+- Initial integrated search failure exposed an existing all-terms FTS candidate gap after OCR joined sentence punctuation. Candidate collection now accepts any significant query term and applies the original relevance thresholds/ranking afterward. Repaired recording/document searches passed. An initial media test assumed exactly 30000 ms; the actual MP3 boundary was 30001 ms. The test now reads measured transcript times instead of imposing artificial precision.
+- Final migration **0010**, **15/15 existing resources extracted**, **zero queued/processing/failed jobs** after tests. All current resources remain in their original courses with exclusions intact; no original files or historical courses were deleted. New browser fixtures remove only their exact freshly-created course IDs.
+- Model assets are pinned by immutable official revisions and checked SHA-256; runtime offline extraction/chunking verified. Local Compose API/DB healthy, proxy/worker running. No VM deployment attempted.
+- Deployment guidance updated from measured OCR peaks (~1.5–1.6 GiB), batch times and image/idle-service sizes: recommend 2+ cores / 8 GB Docker RAM, retain one OCR batch at a time. AI_WORKFLOW.md is the maintained behaviour reference, including course-wide retrieval versus saved question-specific recording associations.
+
+- Real provider/domain regression: `RUN_OPENAI_SMOKE=1 apps/api/.venv/bin/python scripts/integration_smoke.py /tmp/lectureloop-source-speech.mp3` — **all checks passed**: OCR/embeddings/hybrid retrieval + opt-in grounded answer from internal contexts, private/public semantic grouping and human resolution, anonymous feedback routing, real MP3 batch STT and grouped media links. The exact fixture course was removed afterward. No credentials printed.
+
+- Final dependency consistency: updated `uv.lock` has no PyMuPDF and matches every tested worker package version. Both container locks are reproducibly exported from it; `pip check` passed in API and worker after the final rebuild. Imported media now reports extraction ready only after real STT finishes. Final-image Chromium and WebKit media journeys re-passed with that status assertion (10.4 s / 11.0 s). `/api/ready` is ready.
+- Complete: PaddleOCR/Poppler ingestion, local paragraph-aware chunking, resumable backfill, grouped source-link search, bounded preflight, canonical AI documentation and local rollout. No remaining failure in the required checks; lean-profile recognition limitations and sizing guidance are documented.
+
+## Replay, image uploads and keyword relevance — 2026-10-20
+
+Implemented and verified locally. New migration 0011 adds optional private profile/course/lecture image references. Real image decode/orientation/metadata stripping and bounded WebP storage; authorized upload/replace/remove UI in profile dialog, course settings and lecture banner dialog.
+
+Annotation audit found actual persisted ink (8353–9133 ms before clear). Added time/seek replay regression coverage, timeline retry, separate archive heading layout, and slide-image-relative strokes with legacy coordinate compatibility. Course Search uses all-word/local-stemming/proximity qualification instead of accepting partial lexical or semantic-only matches; one-word and short technical queries supported. Preflight's hybrid policy remains intact; AI_WORKFLOW.md updated.
+
+- Host backend: **41 passed, 4 Linux/OCR skips** after image authorization/validation, keyword relevance and annotation-coordinate tests.
+- Frontend production build passed; component suite **8 passed**, including rewind/clear/legacy annotation rendering.
+- Local Compose rebuild/migration, native Linux suite and Chromium/WebKit results are recorded below.
+
+Verification complete:
+
+- `docker compose up --build -d` applied migration **0011**, API/DB healthy, worker/proxy running. Final source changes built successfully; `pip check` passed in worker.
+- `docker run --rm --network none -v "$PWD/apps/api:/app:ro" lectureloop-worker python -m pytest -q -p no:cacheprovider` — **45 passed in 20.31 s**. Includes genuine CPU OCR/Poppler/Office/FFmpeg tests, local keyword precision and inflection checks, image authorization/EXIF removal/resizing/invalid file limits, legacy/new annotation markers and clear events. Host suite **41 passed, 4 Linux/OCR skips**.
+- Frontend production build, fatal Python lint and changed-file Prettier checks passed; **8 component tests passed**.
+- Chromium: image/profile/course/lecture upload persistence, exact page search/preflight, classroom privacy, source media playback and workspace journeys passed. Real microphone journey re-passed (**14.0 s**) with actual saved drawing, visible learner ink, timed replay, clear and rewind checks. Independent legacy+new ink replay/alignment journey passed (**6.0 s**). **7 Chromium journeys verified across runs**.
+- WebKit: **5 journeys passed in 43.6 s** (classroom, imported media times, images, grouped keyword/PDF/preflight and workspace). Dedicated legacy/new ink replay and image alignment passed (**7.8 s**). **6 WebKit journeys verified across runs**. Physical Safari/iOS microphone hardware remains outside these engine checks.
+- Drawing regression initially sent no stroke because the test mouse targeted an off-screen SVG after scrolling to its toolbar; corrected by scrolling the drawing surface into view. The stricter course search correctly rejected a prior test query whose word “binary” was absent from that live STT window; the recording test now searches actual retained words “sorted interval”. No search gate was weakened to make the test pass.
+- Existing recording audit: ink at **8353 ms**, clear at **9133 ms**. Kept its actual clear semantics; new strokes use slide-image bounds, old events retain legacy coordinates. Browser seek checks confirm ink restores before clear. Archive back-link/eyebrow/title bounding boxes do not overlap on mobile.
+- Actual responsive screenshots inspected: image-dialog upload preview/actions and archive with both legacy and image-relative ink. Removed duplicate lecture-banner heading and separated file-input focus outline from helper text.
+- API contract exported to `docs/openapi.json`, including nine picture operations, annotation coordinate marker and 1–200-character keyword query bounds. AI_WORKFLOW.md documents the separate local keyword / hybrid preflight policies and explicitly excludes picture uploads from AI/RAG.
+- No original resources, recordings or historical courses were removed. Tests clean only exact newly-created fixture course IDs; deployment remains local only.
+
+- Final polished image controls re-passed in Chromium (**2.5 s**) and WebKit (**6.1 s**). Final migration is 0011, `/api/ready` is ready and there are **zero queued/processing/failed jobs**. PostgreSQL candidate checks also passed for C++, AI and sorting/sorted inflections. All requested changes are complete locally.

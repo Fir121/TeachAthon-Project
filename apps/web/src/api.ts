@@ -36,12 +36,14 @@ export type User = {
   name: string;
   email: string;
   role: "lecturer" | "student";
+  avatar_url?: string | null;
 };
 export type Course = {
   id: string;
   name: string;
   description: string;
   discoverable: boolean;
+  banner_url?: string | null;
   membership: "lecturer" | "student" | null;
   membership_status: string | null;
   settings: CourseSettings | null;

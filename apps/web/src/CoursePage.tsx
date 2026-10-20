@@ -26,6 +26,7 @@ import {
 } from "./api";
 import { QuestionFeed } from "./Questions";
 import Search from "./Search";
+import ImageUpload from "./ImageUpload";
 import { Dialog, FormActions, useDialog } from "./Dialog";
 export type Resource = {
   id: string;
@@ -35,12 +36,17 @@ export type Resource = {
   process_status: string;
   error_message: string | null;
   index_status: string;
+  extraction_status: string;
+  extraction_completed_pages: number;
+  extraction_total_pages: number;
+  extraction_error: string | null;
   index_error: string | null;
   indexing_enabled: boolean;
   page_count: number;
   size_bytes: number;
 };
 export type Lecture = {
+  banner_url?: string | null;
   id: string;
   title: string;
   slide_resource_id: string;
@@ -126,6 +132,13 @@ export default function CoursePage() {
       <Link className="back" to="/">
         ← All courses
       </Link>
+      {course?.banner_url && (
+        <img
+          className="course-banner"
+          src={course.banner_url}
+          alt={`${course.name} banner`}
+        />
+      )}
       <div className="course-heading">
         <span className="course-symbol">
           <BookOpen size={28} />
@@ -386,7 +399,11 @@ function Resources() {
                   <Status status={r.process_status} />
                   {r.indexing_enabled && r.process_status === "ready" && (
                     <span className="small muted">
-                      Search: {r.index_status}
+                      Search:{" "}
+                      {r.extraction_status &&
+                      !["ready", "pending"].includes(r.extraction_status)
+                        ? `reading pages ${r.extraction_completed_pages}/${r.extraction_total_pages} (${r.extraction_status})`
+                        : r.index_status}
                     </span>
                   )}
                   {!r.indexing_enabled && (
@@ -397,6 +414,9 @@ function Resources() {
                   <p className="error">{r.index_error}</p>
                 )}
                 {r.error_message && <p className="error">{r.error_message}</p>}
+                {teacher && r.extraction_error && (
+                  <p className="error">{r.extraction_error}</p>
+                )}
               </div>
               <div className="resource-actions">
                 <Link className="button secondary" to={`/resources/${r.id}`}>
@@ -587,8 +607,8 @@ function Resources() {
             <div className="dialog-section">
               <h3>Processing & access</h3>
               <p className="muted small">
-                File: {managing.process_status} · Search:{" "}
-                {managing.index_status}
+                Slides/file: {managing.process_status} · Text:{" "}
+                {managing.extraction_status} · Search: {managing.index_status}
               </p>
               <div className="actions">
                 <a
@@ -597,7 +617,8 @@ function Resources() {
                 >
                   Download original
                 </a>
-                {managing.process_status === "failed" && (
+                {(managing.process_status === "failed" ||
+                  managing.extraction_status === "failed") && (
                   <button
                     type="button"
                     className="secondary"
@@ -745,8 +766,15 @@ function Lectures() {
       <Failure error={lectures.error} />
       <div className="spaced">
         {lectures.data?.map((l) => (
-          <article className="list-row panel" key={l.id}>
-            <div>
+          <article className="list-row panel lecture-card" key={l.id}>
+            {l.banner_url && (
+              <img
+                className="lecture-thumbnail"
+                src={l.banner_url}
+                alt={`${l.title} banner`}
+              />
+            )}
+            <div className="grow">
               <h3>{l.title}</h3>
               <p className="muted small">
                 {l.session?.state || "Prepared slides"}
@@ -952,6 +980,13 @@ function Settings() {
   if (!teacher) return <p>Only lecturers can change course settings.</p>;
   return (
     <>
+      <section className="panel narrow spaced-bottom">
+        <ImageUpload
+          label="Course banner"
+          endpoint={`/courses/${id}/banner`}
+          url={course?.banner_url}
+        />
+      </section>
       <form
         className="panel narrow"
         onSubmit={(e) => {

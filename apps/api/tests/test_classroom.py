@@ -149,3 +149,24 @@ def test_stale_worker_event_counters_are_allocated_atomically_without_private_se
         assert event.public_sequence == original[1] + 2
         rows = list(worker_db.scalars(select(SessionEvent).where(SessionEvent.session_id == sid)))
         assert len({row.sequence for row in rows}) == len(rows)
+
+
+def test_annotations_preserve_legacy_and_slide_coordinates_and_clear_events(room):
+    teacher, student, outsider, _, _, _, sid, _ = room
+    legacy = {"index": 0, "stroke": [[0.1, 0.2], [0.3, 0.4]]}
+    image_relative = {**legacy, "coordinates": "slide"}
+    assert student.post(f"/api/v1/sessions/{sid}/annotations", json=image_relative).status_code == 403
+    assert outsider.get(f"/api/v1/sessions/{sid}/timeline").status_code == 404
+    assert teacher.post(f"/api/v1/sessions/{sid}/annotations", json=legacy).status_code == 200
+    assert teacher.post(f"/api/v1/sessions/{sid}/annotations", json=image_relative).status_code == 200
+    assert (
+        teacher.post(
+            f"/api/v1/sessions/{sid}/annotations", json={"index": 0, "stroke": [], "coordinates": "slide"}
+        ).status_code
+        == 200
+    )
+    events = student.get(f"/api/v1/sessions/{sid}/timeline").json()
+    annotations = [event for event in events if event["type"] == "annotation.added"]
+    assert [event["payload"]["coordinates"] for event in annotations] == ["stage", "slide", "slide"]
+    assert annotations[-1]["payload"]["stroke"] == []
+    assert len(student.get(f"/api/v1/sessions/{sid}/snapshot").json()["annotations"]) == 3

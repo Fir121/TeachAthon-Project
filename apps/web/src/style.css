@@ -1539,3 +1539,147 @@ form > .error {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
+.source-locations {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 1rem 0;
+}
+.source-location {
+  padding: 0.4rem 0.7rem;
+  border: 1px solid var(--line, #dce3e0);
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+}
+.match-card h3 a {
+  text-decoration: none;
+  color: inherit;
+}
+.match-card h3 a:hover {
+  text-decoration: underline;
+}
+
+/* User-supplied pictures retain the existing workspace layout. */
+.avatar-button {
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid transparent;
+  flex-shrink: 0;
+}
+.avatar-button img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.course-art {
+  position: relative;
+  overflow: hidden;
+}
+.course-art > img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.course-art > span {
+  position: relative;
+  z-index: 1;
+  background: #ffffffed;
+  border-radius: 6px;
+  padding: 4px 8px;
+}
+.course-banner,
+.lecture-banner {
+  display: block;
+  width: 100%;
+  max-height: 200px;
+  aspect-ratio: 5 / 1;
+  object-fit: cover;
+  border-radius: 14px;
+  margin: 0 0 24px;
+}
+.lecture-thumbnail {
+  width: 112px;
+  height: 72px;
+  object-fit: cover;
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+.lecture-card {
+  gap: 20px;
+}
+.image-editor h3 {
+  margin-bottom: 18px;
+}
+.image-preview {
+  aspect-ratio: 3 / 1;
+  background: #edf1e9;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+}
+.image-preview > img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.image-preview > span {
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.image-preview-avatar {
+  aspect-ratio: 1;
+  width: 160px;
+  border-radius: 50%;
+}
+.image-preview-avatar > span {
+  flex-direction: column;
+  font-size: 0.8rem;
+  text-align: center;
+  padding: 12px;
+}
+.spaced-bottom {
+  margin-bottom: 24px;
+}
+.archive-heading {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 28px;
+}
+.archive-heading .back,
+.archive-heading h1,
+.archive-heading .lecture-banner {
+  margin: 0;
+}
+.archive-heading .eyebrow {
+  display: block;
+  line-height: 1.5;
+}
+.archive-heading .lecture-banner {
+  margin-bottom: 10px;
+}
+@media (max-width: 600px) {
+  .course-banner,
+  .lecture-banner {
+    aspect-ratio: 3 / 1;
+  }
+  .lecture-card {
+    flex-wrap: wrap;
+  }
+  .lecture-thumbnail {
+    width: 80px;
+    height: 64px;
+  }
+}
+
+.image-editor > label {
+  margin-bottom: 12px;
+}

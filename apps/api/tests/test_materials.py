@@ -1,5 +1,7 @@
 import io
-import pymupdf
+from reportlab.pdfgen import canvas
+import shutil
+import pytest
 from conftest import signup
 from app.models import Job, Resource
 from app.ingest import ingest
@@ -42,10 +44,13 @@ def test_upload_conversion_folder_cycles_and_isolation(clients, tmp_path, monkey
         ).status_code
         == 415
     )
-    with pymupdf.open() as doc:
-        page = doc.new_page()
-        page.insert_text((60, 60), "Algorithmic complexity and binary search")
-        content = doc.tobytes()
+    if not shutil.which("pdftoppm"):
+        pytest.skip("Poppler rendering is checked in the Linux image")
+    stream = io.BytesIO()
+    document = canvas.Canvas(stream)
+    document.drawString(60, 700, "Algorithmic complexity and binary search")
+    document.save()
+    content = stream.getvalue()
     r = t.post(f"/api/v1/courses/{cid}/resources", files={"file": ("deck.pdf", io.BytesIO(content), "application/pdf")})
     assert r.status_code == 202, r.text
     rid = r.json()["id"]
@@ -140,7 +145,12 @@ def test_actual_powerpoint_conversion_in_linux(clients, tmp_path, monkeypatch):
         ingest(db, db.scalar(select(Job).where(Job.target_id == rid)))
         resource = db.get(Resource, rid)
         assert resource.process_status == "ready" and len(resource.pages) == 1
-        assert "Binary search" in resource.pages[0]["text"]
+        assert resource.extraction_json["status"] == "queued"
+        from app.ingest import extract_document
+
+        if __import__("importlib.util", fromlist=["find_spec"]).find_spec("paddleocr"):
+            extract_document(db, db.scalar(select(Job).where(Job.target_id == rid, Job.type == "extract_document")))
+            assert "Binary search" in db.get(Resource, rid).pages[0]["text"]
     preview = t.get(f"/api/v1/resources/{rid}/preview")
     assert preview.status_code == 200 and preview.content.startswith(b"%PDF")
     assert preview.headers["content-disposition"].startswith("inline;")
@@ -190,3 +200,31 @@ def test_index_status_uses_latest_job_not_backoff_schedule(clients):
         )
         db.commit()
         assert resource_json(r, db)["index_status"] == "ready"
+
+
+def test_worker_yields_ocr_continuation_to_recording_assembly(clients, monkeypatch):
+    from app import worker
+
+    t, _, _, factory = clients
+    signup(t)
+    cid = t.post("/api/v1/courses", json={"name": "Batch scheduling"}).json()["id"]
+    with factory() as db:
+        batch = Job(course_id=cid, target_id="fixture", type="extract_document")
+        db.add(batch)
+        db.commit()
+        batch_id = batch.id
+    seen = []
+
+    def continuation(db, job):
+        seen.append("batch")
+        db.add(Job(course_id=cid, target_id="fixture", type="assemble_recording"))
+        return False
+
+    monkeypatch.setattr(worker, "SessionLocal", factory)
+    monkeypatch.setitem(worker.HANDLERS, "extract_document", continuation)
+    monkeypatch.setitem(worker.HANDLERS, "assemble_recording", lambda db, job: seen.append("recording"))
+    assert worker.run_once()
+    with factory() as db:
+        batch = db.get(Job, batch_id)
+        assert batch.status == "queued" and batch.attempts == 0
+    assert worker.run_once() and seen == ["batch", "recording"]

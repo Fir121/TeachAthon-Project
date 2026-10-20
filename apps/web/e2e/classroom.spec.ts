@@ -141,6 +141,7 @@ test("lecturer and mobile student share slides, polls and private-safe questions
 test("real browser microphone chunks assemble to seekable protected recording", async ({
   browser,
 }) => {
+  test.setTimeout(150000);
   const context = await browser.newContext({
     baseURL: "http://localhost:8080",
     permissions: ["microphone"],
@@ -300,6 +301,31 @@ test("real browser microphone chunks assemble to seekable protected recording", 
         )
         .toBe(true);
     }
+    await page.getByRole("button", { name: "Annotate", exact: true }).click();
+    const overlay = page.getByRole("img", {
+      name: "Slide annotations",
+      exact: true,
+    });
+    await overlay.scrollIntoViewIfNeeded();
+    await expect(overlay).toHaveClass(/drawing/);
+    const box = (await overlay.boundingBox())!;
+    await page.mouse.move(box.x + box.width * 0.2, box.y + box.height * 0.35);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width * 0.6, box.y + box.height * 0.55, {
+      steps: 10,
+    });
+    await page.mouse.up();
+    await expect(overlay.locator("polyline")).toHaveCount(1);
+    await expect(
+      learnerPage
+        .getByRole("img", { name: "Slide annotations", exact: true })
+        .locator("polyline"),
+    ).toHaveCount(1);
+    // A real visible ink interval is necessary to check seek/clear timing accurately.
+    await page.waitForTimeout(600);
+    await page.getByRole("button", { name: "Clear slide ink" }).click();
+    await expect(overlay.locator("polyline")).toHaveCount(0);
+    await page.getByRole("button", { name: "Annotate", exact: true }).click();
     await page.getByRole("button", { name: "Next slide" }).click();
     await expect(page.getByText("Slide 2 / 2")).toBeVisible();
     await page
@@ -342,6 +368,58 @@ test("real browser microphone chunks assemble to seekable protected recording", 
       a.currentTime = 0;
     });
     await expect(page.getByAltText("Lecture slide 1")).toBeVisible();
+    const ink = timeline.find(
+      (event: any) =>
+        event.type === "annotation.added" && event.payload.stroke.length > 0,
+    );
+    const cleared = timeline.find(
+      (event: any) =>
+        event.type === "annotation.added" && event.payload.stroke.length === 0,
+    );
+    expect(ink.payload.coordinates).toBe("slide");
+    const inkTime = (ink.offset_ms + cleared.offset_ms) / 2;
+    await page
+      .locator("audio")
+      .evaluate((audio: HTMLAudioElement, ms: number) => {
+        audio.currentTime = ms / 1000;
+      }, inkTime);
+    const replayInk = page
+      .getByRole("img", { name: "Slide annotations", exact: true })
+      .locator("polyline");
+    await expect(replayInk).toHaveCount(1);
+    await page.setViewportSize({ width: 360, height: 780 });
+    await expect(replayInk).toHaveCount(1);
+    const boxes = await page.locator(".archive-heading").evaluate((header) => {
+      const back = header.querySelector(".back")!.getBoundingClientRect();
+      const label = header.querySelector(".eyebrow")!.getBoundingClientRect();
+      const title = header.querySelector("h1")!.getBoundingClientRect();
+      return {
+        backBottom: back.bottom,
+        labelTop: label.top,
+        labelBottom: label.bottom,
+        titleTop: title.top,
+      };
+    });
+    expect(boxes.backBottom).toBeLessThan(boxes.labelTop);
+    expect(boxes.labelBottom).toBeLessThan(boxes.titleTop);
+    await page.screenshot({
+      path: "test-results/archive-annotations-mobile.png",
+      fullPage: true,
+    });
+    await page
+      .locator("audio")
+      .evaluate((audio: HTMLAudioElement, ms: number) => {
+        audio.currentTime = ms / 1000;
+      }, cleared.offset_ms + 1);
+    await expect(replayInk).toHaveCount(0);
+    await page
+      .locator("audio")
+      .evaluate((audio: HTMLAudioElement, ms: number) => {
+        audio.currentTime = ms / 1000;
+      }, inkTime);
+    await expect(replayInk).toHaveCount(1);
+    await page.setViewportSize({ width: 1280, height: 900 });
+
     await page.locator("audio").evaluate((a: HTMLAudioElement, ms: number) => {
       a.currentTime = ms / 1000;
     }, transition.offset_ms);
@@ -373,11 +451,11 @@ test("real browser microphone chunks assemble to seekable protected recording", 
           async () => {
             const result = await (
               await learner.request.get(
-                `/api/v1/courses/${cid}/search?q=binary%20search%20sorted%20interval`,
+                `/api/v1/courses/${cid}/search?q=sorted%20interval`,
               )
             ).json();
             return result.matches?.some(
-              (match: any) => match.source_type === "lecture_explanation",
+              (match: any) => match.source_type === "recording",
             );
           },
           { timeout: 30000 },

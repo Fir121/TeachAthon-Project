@@ -29,6 +29,7 @@ import CoursePage from "./CoursePage";
 import Live, { LectureSetup, Join, Invite } from "./Live";
 import Replay from "./Replay";
 import ResourcePlayer from "./ResourcePlayer";
+import ImageUpload from "./ImageUpload";
 export function ErrorBox({ error }: { error: Error | null }) {
   return error ? (
     <p role="alert" className="error">
@@ -219,7 +220,11 @@ export function Dashboard({ user }: { user: User }) {
           .map((c, i) => (
             <Link className="course-card" key={c.id} to={`/courses/${c.id}`}>
               <div className={`course-art tint-${i % 3}`}>
-                <BookOpen size={40} />
+                {c.banner_url ? (
+                  <img src={c.banner_url} alt="" />
+                ) : (
+                  <BookOpen size={40} />
+                )}
                 <span>
                   {c.membership === "lecturer" ? "Teaching" : "Learning"}
                 </span>
@@ -282,6 +287,7 @@ function Discover() {
   );
 }
 export default function App() {
+  const profileDialog = useDialog();
   const me = useQuery({
     queryKey: ["me"],
     queryFn: () => api<User>("/auth/me"),
@@ -331,7 +337,19 @@ export default function App() {
           LectureLoop
         </Link>
         <div className="account">
-          <span className="avatar">{me.data.name.slice(0, 1)}</span>
+          <button
+            className="avatar avatar-button"
+            aria-label="Your profile"
+            onClick={(event) =>
+              profileDialog.open("profile", event.currentTarget)
+            }
+          >
+            {me.data.avatar_url ? (
+              <img src={me.data.avatar_url} alt="Your profile picture" />
+            ) : (
+              me.data.name.slice(0, 1)
+            )}
+          </button>
           <span>
             {me.data.name}
             <small>{me.data.role}</small>
@@ -345,6 +363,19 @@ export default function App() {
           </button>
         </div>
       </header>
+      {profileDialog.active === "profile" && (
+        <Dialog title="Your profile" onClose={profileDialog.close}>
+          <p className="muted">
+            {me.data.name} · {me.data.email}
+          </p>
+          <ImageUpload
+            label="Profile picture"
+            endpoint="/auth/me/avatar"
+            url={me.data.avatar_url}
+            avatar
+          />
+        </Dialog>
+      )}
       {notice && !dialogOpen && (
         <div className="notice" role="alert">
           {notice}

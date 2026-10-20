@@ -2289,7 +2289,9 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/PreflightResponse"
+                }
               }
             }
           },
@@ -2865,8 +2867,8 @@
             "required": true,
             "schema": {
               "type": "string",
-              "minLength": 3,
-              "maxLength": 8000,
+              "minLength": 1,
+              "maxLength": 200,
               "title": "Q"
             }
           }
@@ -2876,7 +2878,9 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/SearchResponse"
+                }
               }
             }
           },
@@ -3624,6 +3628,289 @@
           }
         }
       }
+    },
+    "/api/v1/auth/me/avatar": {
+      "get": {
+        "summary": "Avatar",
+        "operationId": "avatar_api_v1_auth_me_avatar_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Upload Avatar",
+        "operationId": "upload_avatar_api_v1_auth_me_avatar_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_avatar_api_v1_auth_me_avatar_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete Avatar",
+        "operationId": "delete_avatar_api_v1_auth_me_avatar_delete",
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          }
+        }
+      }
+    },
+    "/api/v1/courses/{cid}/banner": {
+      "get": {
+        "summary": "Course Banner",
+        "operationId": "course_banner_api_v1_courses__cid__banner_get",
+        "parameters": [
+          {
+            "name": "cid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Cid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Upload Course Banner",
+        "operationId": "upload_course_banner_api_v1_courses__cid__banner_post",
+        "parameters": [
+          {
+            "name": "cid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Cid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_course_banner_api_v1_courses__cid__banner_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete Course Banner",
+        "operationId": "delete_course_banner_api_v1_courses__cid__banner_delete",
+        "parameters": [
+          {
+            "name": "cid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Cid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/lectures/{lid}/banner": {
+      "get": {
+        "summary": "Lecture Banner",
+        "operationId": "lecture_banner_api_v1_lectures__lid__banner_get",
+        "parameters": [
+          {
+            "name": "lid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Lid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Upload Lecture Banner",
+        "operationId": "upload_lecture_banner_api_v1_lectures__lid__banner_post",
+        "parameters": [
+          {
+            "name": "lid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Lid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_lecture_banner_api_v1_lectures__lid__banner_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete Lecture Banner",
+        "operationId": "delete_lecture_banner_api_v1_lectures__lid__banner_delete",
+        "parameters": [
+          {
+            "name": "lid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Lid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -3659,6 +3946,12 @@
             "type": "array",
             "maxItems": 2000,
             "title": "Stroke"
+          },
+          "coordinates": {
+            "type": "string",
+            "pattern": "^(stage|slide)$",
+            "title": "Coordinates",
+            "default": "stage"
           }
         },
         "type": "object",
@@ -3752,6 +4045,48 @@
           "end_ms"
         ],
         "title": "Body_upload_audio_api_v1_sessions__sid__audio_chunks_post"
+      },
+      "Body_upload_avatar_api_v1_auth_me_avatar_post": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "File"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file"
+        ],
+        "title": "Body_upload_avatar_api_v1_auth_me_avatar_post"
+      },
+      "Body_upload_course_banner_api_v1_courses__cid__banner_post": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "File"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file"
+        ],
+        "title": "Body_upload_course_banner_api_v1_courses__cid__banner_post"
+      },
+      "Body_upload_lecture_banner_api_v1_lectures__lid__banner_post": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "File"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file"
+        ],
+        "title": "Body_upload_lecture_banner_api_v1_lectures__lid__banner_post"
       },
       "CourseInput": {
         "properties": {
@@ -4049,6 +4384,61 @@
         ],
         "title": "PreflightInput"
       },
+      "PreflightResponse": {
+        "properties": {
+          "preflight_token": {
+            "type": "string",
+            "title": "Preflight Token"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "matches": {
+            "items": {
+              "$ref": "#/components/schemas/SourceGroup"
+            },
+            "type": "array",
+            "title": "Matches"
+          },
+          "method": {
+            "type": "string",
+            "title": "Method"
+          },
+          "generated_answer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Generated Answer"
+          }
+        },
+        "type": "object",
+        "required": [
+          "preflight_token",
+          "status",
+          "error",
+          "matches",
+          "method",
+          "generated_answer"
+        ],
+        "title": "PreflightResponse"
+      },
       "QuestionEdit": {
         "properties": {
           "text": {
@@ -4187,6 +4577,30 @@
         ],
         "title": "ResourceEdit"
       },
+      "SearchResponse": {
+        "properties": {
+          "matches": {
+            "items": {
+              "$ref": "#/components/schemas/SourceGroup"
+            },
+            "type": "array",
+            "title": "Matches"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings"
+          }
+        },
+        "type": "object",
+        "required": [
+          "matches",
+          "warnings"
+        ],
+        "title": "SearchResponse"
+      },
       "SlideInput": {
         "properties": {
           "index": {
@@ -4200,6 +4614,122 @@
           "index"
         ],
         "title": "SlideInput"
+      },
+      "SourceGroup": {
+        "properties": {
+          "source_id": {
+            "type": "string",
+            "title": "Source Id"
+          },
+          "source_type": {
+            "type": "string",
+            "enum": [
+              "document",
+              "recording",
+              "discussion"
+            ],
+            "title": "Source Type"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "url": {
+            "type": "string",
+            "title": "Url"
+          },
+          "locations": {
+            "items": {
+              "$ref": "#/components/schemas/SourceLocation"
+            },
+            "type": "array",
+            "title": "Locations"
+          },
+          "question_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Question Id"
+          },
+          "audio_available": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Audio Available"
+          },
+          "score": {
+            "type": "number",
+            "title": "Score"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "source_id",
+          "source_type",
+          "title",
+          "url",
+          "locations",
+          "score"
+        ],
+        "title": "SourceGroup"
+      },
+      "SourceLocation": {
+        "properties": {
+          "page_number": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Page Number"
+          },
+          "start_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Ms"
+          },
+          "end_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Ms"
+          },
+          "url": {
+            "type": "string",
+            "title": "Url"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "url"
+        ],
+        "title": "SourceLocation"
       },
       "StartInput": {
         "properties": {

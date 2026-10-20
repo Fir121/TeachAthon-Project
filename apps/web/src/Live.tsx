@@ -23,6 +23,8 @@ import { Failure, type Lecture } from "./CoursePage";
 import { AudioControls } from "./AudioCapture";
 import LecturerQueue from "./LecturerQueue";
 import FeedbackNote from "./FeedbackNote";
+import { Dialog, useDialog } from "./Dialog";
+import ImageUpload from "./ImageUpload";
 export type Session = {
   id: string;
   lecture_id: string;
@@ -53,11 +55,12 @@ export type Annotation = {
   index: number;
   stroke: number[][];
   offset_ms: number;
+  coordinates?: "stage" | "slide";
 };
 export type Snapshot = {
   participants?: number;
   session: Session;
-  lecture: { id: string; title: string };
+  lecture: { id: string; title: string; banner_url?: string | null };
   membership: string;
   slides: Slide[];
   poll: Poll | null;
@@ -66,6 +69,7 @@ export type Snapshot = {
   latest_caption?: string;
 };
 export function LectureSetup() {
+  const bannerDialog = useDialog();
   const { id } = useParams(),
     navigate = useNavigate(),
     [record, setRecord] = useState(false),
@@ -106,12 +110,44 @@ export function LectureSetup() {
       <Link className="back" to={`/courses/${lecture.data.course_id}/lectures`}>
         ← Course lectures
       </Link>
+      {lecture.data.banner_url && (
+        <img
+          className="lecture-banner"
+          src={lecture.data.banner_url}
+          alt={`${lecture.data.title} banner`}
+        />
+      )}
       <div className="row-between">
         <div>
           <span className="eyebrow">READY FOR THE ROOM</span>
           <h1>{lecture.data.title}</h1>
         </div>
       </div>
+      {course.data?.membership === "lecturer" && (
+        <div className="actions spaced-bottom">
+          <button
+            className="secondary"
+            onClick={(event) =>
+              bannerDialog.open("lecture-banner", event.currentTarget)
+            }
+          >
+            {lecture.data.banner_url
+              ? "Change lecture banner"
+              : "Add lecture banner"}
+          </button>
+        </div>
+      )}
+      {course.data?.membership === "lecturer" &&
+        bannerDialog.active === "lecture-banner" && (
+          <Dialog title="Lecture banner" onClose={bannerDialog.close}>
+            <ImageUpload
+              label="Lecture banner"
+              showTitle={false}
+              endpoint={`/lectures/${id}/banner`}
+              url={lecture.data.banner_url}
+            />
+          </Dialog>
+        )}
       <div className="lecture-setup">
         <section className="panel">
           <img
@@ -345,42 +381,103 @@ export function SlideView({
   slide: Slide | undefined;
   index: number;
   annotations: Annotation[];
-  latest_caption?: string;
   onStroke?: (stroke: number[][]) => void;
 }) {
-  const [drawing, setDrawing] = useState(false),
-    [points, setPoints] = useState<number[][]>([]),
+  const [drawing, setDrawing] = useState(false);
+  const [points, setPoints] = useState<number[][]>([]);
+  const [natural, setNatural] = useState({ width: 0, height: 0 });
+  const [bounds, setBounds] = useState<React.CSSProperties>({});
+  const stage = useRef<HTMLDivElement>(null),
     svg = useRef<SVGSVGElement>(null);
-  const strokes: number[][][] = [];
-  for (const a of annotations.filter((a) => a.index === index)) {
-    if (a.stroke.length === 0) strokes.length = 0;
-    else strokes.push(a.stroke);
+  useEffect(() => {
+    const element = stage.current;
+    if (!element || !natural.width || !natural.height) return;
+    function measure() {
+      const width = element!.clientWidth,
+        height = element!.clientHeight;
+      const scale = Math.min(width / natural.width, height / natural.height);
+      setBounds({
+        inset: "auto",
+        left: (width - natural.width * scale) / 2,
+        top: (height - natural.height * scale) / 2,
+        width: natural.width * scale,
+        height: natural.height * scale,
+      });
+    }
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [natural]);
+  const strokes: Annotation[] = [];
+  for (const annotation of annotations.filter((a) => a.index === index)) {
+    if (annotation.stroke.length === 0) strokes.length = 0;
+    else strokes.push(annotation);
   }
-  function point(e: React.PointerEvent) {
+  function point(event: React.PointerEvent) {
     const rect = svg.current!.getBoundingClientRect();
     return [
-      Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width)),
-      Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height)),
+      Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width)),
+      Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height)),
     ];
+  }
+  function line(stroke: number[][], key: number) {
+    return (
+      <polyline
+        key={key}
+        points={stroke.map((p) => `${p[0] * 1000},${p[1] * 1000}`).join(" ")}
+        fill="none"
+        stroke="#dc673b"
+        strokeWidth={4}
+        vectorEffect="non-scaling-stroke"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    );
   }
   return (
     <>
-      <div className="slide-stage">
-        <img src={slide?.image_url} alt={`Lecture slide ${index + 1}`} />
+      <div className="slide-stage" ref={stage}>
+        <img
+          src={slide?.image_url}
+          alt={`Lecture slide ${index + 1}`}
+          onLoad={(event) =>
+            setNatural({
+              width: event.currentTarget.naturalWidth,
+              height: event.currentTarget.naturalHeight,
+            })
+          }
+        />
         <svg
-          ref={svg}
           viewBox="0 0 1000 1000"
           preserveAspectRatio="none"
+          aria-label="Legacy slide annotations"
+          role="img"
+        >
+          {strokes
+            .filter((a) => a.coordinates !== "slide")
+            .map((a, i) => line(a.stroke, i))}
+        </svg>
+        <svg
+          ref={svg}
+          style={bounds}
+          viewBox="0 0 1000 1000"
+          preserveAspectRatio="none"
+          aria-label="Slide annotations"
+          role="img"
           className={drawing ? "drawing" : ""}
-          onPointerDown={(e) => {
+          onPointerDown={(event) => {
             if (drawing) {
-              e.currentTarget.setPointerCapture(e.pointerId);
-              setPoints([point(e)]);
+              event.currentTarget.setPointerCapture(event.pointerId);
+              setPoints([point(event)]);
             }
           }}
-          onPointerMove={(e) => {
-            if (drawing && e.buttons === 1)
-              setPoints((p) => (p.length < 1900 ? [...p, point(e)] : p));
+          onPointerMove={(event) => {
+            if (drawing && event.buttons === 1)
+              setPoints((previous) =>
+                previous.length < 1900 ? [...previous, point(event)] : previous,
+              );
           }}
           onPointerUp={() => {
             if (points.length) {
@@ -388,21 +485,12 @@ export function SlideView({
               setPoints([]);
             }
           }}
+          onPointerCancel={() => setPoints([])}
         >
-          {[...strokes, points].map((stroke, i) => (
-            <polyline
-              key={i}
-              points={stroke
-                .map((p) => `${p[0] * 1000},${p[1] * 1000}`)
-                .join(" ")}
-              fill="none"
-              stroke="#dc673b"
-              strokeWidth={4}
-              vectorEffect="non-scaling-stroke"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          ))}
+          {strokes
+            .filter((a) => a.coordinates === "slide")
+            .map((a, i) => line(a.stroke, i))}
+          {points.length > 0 && line(points, -1)}
         </svg>
       </div>
       {onStroke && (
@@ -450,6 +538,7 @@ export default function Live() {
     api(`/sessions/${id}/annotations`, {
       index: q.data?.session.active_slide_index,
       stroke,
+      coordinates: "slide",
     }),
   );
   const poll = useAction(() => api(`/sessions/${id}/polls`, {}));

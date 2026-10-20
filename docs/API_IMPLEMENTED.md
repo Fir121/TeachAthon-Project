@@ -101,3 +101,13 @@ All course data requires active membership. Lecturer commands additionally check
 | POST | `/api/v1/feedback/{fid}/route` |
 | WebSocket | `/ws/sessions/{sid}` |
 | WebSocket | `/ws/sessions/{sid}/audio` |
+
+## Grouped search contract (0010)
+
+Search and preflight retain `matches`, now a `SourceGroup[]` (stable parent `source_id`, `source_type` document/recording/discussion, title, URL, locations, optional question/audio metadata and best-hit score). Locations carry nullable physical page or input-window times and a direct URL. No chunk text/excerpts are returned. Preflight token/status/error/method/generated_answer fields are retained. See generated `openapi.json` for `SourceGroup`, `SourceLocation`, `SearchResponse` and `PreflightResponse`. Resource status additionally exposes extraction status/progress/errors separately from render/index status.
+
+## Picture uploads and keyword search (0011)
+
+Authenticated GET/POST/DELETE `/api/v1/auth/me/avatar` manages only the signed-in user's image. GET/POST/DELETE `/api/v1/courses/{cid}/banner` and `/api/v1/lectures/{lid}/banner` require membership for reads and lecturer membership for writes. POST is multipart `file`; GET returns normalized private WebP; DELETE removes the stored reference/derivative. User/course/lecture DTOs return versioned image URLs without storage paths.
+
+Course search accepts 1–200 characters of search words and uses local all-keyword/proximity matching; preflight still accepts questions and uses hybrid retrieval. Annotation input optionally carries `coordinates: stage|slide` (legacy stage default); new clients send slide-relative points, and snapshot/timeline preserve the marker.

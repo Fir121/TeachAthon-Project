@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { api, useAction } from "./api";
-import { SlideView, type Snapshot } from "./Live";
+import { SlideView, type Snapshot, type Annotation } from "./Live";
 import { Failure, Status } from "./CoursePage";
 export type Segment = {
   id: string;
@@ -11,6 +11,33 @@ export type Segment = {
   end_ms: number;
   timing: string;
 };
+export type TimelineEvent = {
+  type: string;
+  offset_ms: number;
+  payload: {
+    index?: number;
+    stroke?: number[][];
+    coordinates?: "stage" | "slide";
+  };
+};
+export function replayAnnotations(
+  timeline: TimelineEvent[],
+  time: number,
+): Annotation[] {
+  return timeline
+    .filter(
+      (event) =>
+        event.type === "annotation.added" &&
+        event.offset_ms <= time &&
+        typeof event.payload.index === "number",
+    )
+    .map((event) => ({
+      index: event.payload.index!,
+      stroke: event.payload.stroke || [],
+      coordinates: event.payload.coordinates || "stage",
+      offset_ms: event.offset_ms,
+    }));
+}
 export const replaySlide = (
   timeline: { type: string; offset_ms: number; payload: { index?: number } }[],
   time: number,
@@ -39,14 +66,9 @@ export default function Replay() {
   });
   const timeline = useQuery({
     queryKey: ["timeline", id],
-    queryFn: () =>
-      api<
-        {
-          type: string;
-          offset_ms: number;
-          payload: { index: number; stroke?: number[][] };
-        }[]
-      >(`/sessions/${id}/timeline`),
+    queryFn: () => api<TimelineEvent[]>(`/sessions/${id}/timeline`),
+    staleTime: 0,
+    refetchOnMount: "always",
   });
   const status = useQuery({
     queryKey: ["processing", id],
@@ -68,25 +90,38 @@ export default function Replay() {
   if (!data) return <Failure error={snapshot.error} />;
   return (
     <>
-      <Link className="back" to={`/courses/${data.session.course_id}/lectures`}>
-        ← Course lectures
-      </Link>
-      <span className="eyebrow">LECTURE ARCHIVE</span>
-      <h1>{data.lecture.title}</h1>
+      <header className="archive-heading">
+        <Link
+          className="back"
+          to={`/courses/${data.session.course_id}/lectures`}
+        >
+          ← Course lectures
+        </Link>
+        {data.lecture.banner_url && (
+          <img
+            className="lecture-banner"
+            src={data.lecture.banner_url}
+            alt={`${data.lecture.title} banner`}
+          />
+        )}
+        <span className="eyebrow">LECTURE ARCHIVE</span>
+        <h1>{data.lecture.title}</h1>
+      </header>
+      <Failure error={timeline.error} />
+      {timeline.isError && (
+        <button
+          className="secondary spaced-bottom"
+          onClick={() => timeline.refetch()}
+        >
+          Retry slide timeline
+        </button>
+      )}
       <div className="replay-layout">
         <section className="panel">
           <SlideView
             slide={data.slides[index]}
             index={index}
-            annotations={(timeline.data || [])
-              .filter(
-                (e) => e.type === "annotation.added" && e.offset_ms <= time,
-              )
-              .map((e) => ({
-                index: e.payload.index,
-                stroke: e.payload.stroke || [],
-                offset_ms: e.offset_ms,
-              }))}
+            annotations={replayAnnotations(timeline.data || [], time)}
           />
           <p className="muted small spaced">
             Slide {index + 1} · {timeLabel(time)}
@@ -99,6 +134,12 @@ export default function Replay() {
                 src={`/api/v1/sessions/${id}/recording`}
                 onTimeUpdate={(e) =>
                   setTime(e.currentTarget.currentTime * 1000)
+                }
+                onSeeking={(event) =>
+                  setTime(event.currentTarget.currentTime * 1000)
+                }
+                onSeeked={(event) =>
+                  setTime(event.currentTarget.currentTime * 1000)
                 }
                 onLoadedMetadata={() => seek(Number(params.get("t")) || 0)}
                 onError={() => setPlaybackError(true)}

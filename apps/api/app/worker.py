@@ -3,15 +3,16 @@
 import logging
 import time
 import threading
+import signal
 from datetime import timedelta
-from sqlalchemy import select, or_, and_, update
+from sqlalchemy import select, or_, and_, update, case
 from sqlalchemy.orm.exc import StaleDataError
 from sqlalchemy.exc import SQLAlchemyError
 from .db import SessionLocal
 from .models import Job, now
 
 log = logging.getLogger(__name__)
-from .ingest import ingest
+from .ingest import ingest, extract_document, queue_backfill
 from .audio import assemble
 from .ai.retrieval import index_resource, index_session, index_question
 from .intelligence import topic_job, grouping_job, feedback_job, match_job, outline_job
@@ -23,6 +24,7 @@ HANDLERS = {
     "match_answer_excerpt": match_job,
     "generate_outline": outline_job,
     "ingest_document": ingest,
+    "extract_document": extract_document,
     "assemble_recording": assemble,
     "index_resource": index_resource,
     "index_session": index_session,
@@ -54,7 +56,10 @@ def run_once():
                     and_(Job.status == "processing", Job.lease_until < now()),
                 )
             )
-            .order_by(Job.next_run_at)
+            .order_by(
+                case((Job.type == "assemble_recording", 0), (Job.type == "extract_document", 2), else_=1),
+                Job.next_run_at,
+            )
             .with_for_update(skip_locked=True)
             .limit(1)
         )
@@ -72,10 +77,13 @@ def run_once():
             handler = HANDLERS.get(job.type)
             if not handler:
                 raise RuntimeError(f"Unsupported job type: {job.type}")
-            handler(db, job)
+            complete = handler(db, job)
             if not db.scalar(select(Job.id).where(Job.id == job_id)):
                 return True
-            job.status = "ready"
+            job.status = "queued" if complete is False else "ready"
+            if complete is False:
+                job.attempts = 0
+                job.next_run_at = now()
             job.error_message = None
         except Exception as exc:
             db.rollback()
@@ -103,7 +111,12 @@ def run_once():
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
-    while True:
+    shutdown = threading.Event()
+    signal.signal(signal.SIGTERM, lambda *_: shutdown.set())
+    signal.signal(signal.SIGINT, lambda *_: shutdown.set())
+    with SessionLocal() as db:
+        queue_backfill(db)
+    while not shutdown.is_set():
         try:
             if not run_once():
                 time.sleep(1)

@@ -5,6 +5,7 @@ import path from "node:path";
 test("workspace dialogs, lecturer access and page-based PDF sources", async ({
   browser,
 }) => {
+  test.setTimeout(120000);
   const context = await browser.newContext({
     baseURL: "http://localhost:8080",
     viewport: { width: 1360, height: 1000 },
@@ -173,18 +174,26 @@ test("workspace dialogs, lecturer access and page-based PDF sources", async ({
         async () =>
           (await (await context.request.get(`/api/v1/resources/${rid}`)).json())
             .index_status,
-        { timeout: 15000 },
+        { timeout: 90000 },
+      )
+      .toBe("ready");
+    await expect
+      .poll(
+        async () =>
+          (await (await context.request.get(`/api/v1/resources/${rid}`)).json())
+            .extraction_status,
+        { timeout: 90000 },
       )
       .toBe("ready");
     await page.goto(`/courses/${cid}/search`);
-    await page
-      .getByLabel("Search words or a question")
-      .fill("binary search sorted");
+    await page.getByLabel("Search words").fill("binary search sorted");
     await page.getByRole("button", { name: "Search", exact: true }).click();
     await expect(
       page.getByRole("heading", { name: "deck.pdf", exact: true }),
     ).toBeVisible();
     await expect(page.getByText("Page 1", { exact: true })).toBeVisible();
+    await expect(page.locator(".match-card")).toHaveCount(1);
+    await expect(page.locator(".source-excerpt")).toHaveCount(0);
     await expect(page.locator(".match-card").getByText(/0:00/)).toHaveCount(0);
     await page.screenshot({
       path: "test-results/search-sources-desktop.png",

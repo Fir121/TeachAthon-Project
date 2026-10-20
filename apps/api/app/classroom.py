@@ -173,6 +173,7 @@ def end(sid: str, db: DB, user: Actor):
 @router.get("/api/v1/sessions/{sid}/snapshot")
 def snapshot(sid: str, db: DB, user: Actor):
     from .questions import visible_questions, question_json
+    from .pictures import image_url
 
     session, m = live(db, sid, user)
     teacher = m.role == "lecturer"
@@ -194,7 +195,11 @@ def snapshot(sid: str, db: DB, user: Actor):
     )
     return {
         "session": session_json(session, teacher),
-        "lecture": {"id": lecture.id, "title": lecture.title},
+        "lecture": {
+            "id": lecture.id,
+            "title": lecture.title,
+            "banner_url": image_url(f"/lectures/{lecture.id}/banner", lecture.banner_key),
+        },
         "membership": m.role,
         "slides": [{"index": i, "image_url": f"/api/v1/resources/{r.id}/pages/{i}"} for i, p in enumerate(r.pages)],
         "poll": poll_json(db, poll, user, teacher) if poll else None,
@@ -204,7 +209,12 @@ def snapshot(sid: str, db: DB, user: Actor):
         **({"participants": len(PRESENCE.get(sid, {}))} if teacher else {}),
         "latest_caption": latest.text if latest else None,
         "annotations": [
-            {"index": e.payload_json["index"], "stroke": e.payload_json["stroke"], "offset_ms": e.offset_ms}
+            {
+                "index": e.payload_json["index"],
+                "stroke": e.payload_json["stroke"],
+                "coordinates": e.payload_json.get("coordinates", "stage"),
+                "offset_ms": e.offset_ms,
+            }
             for e in annotations
         ],
     }
@@ -252,6 +262,7 @@ def change_slide(sid: str, data: SlideInput, db: DB, user: Actor):
 class AnnotationInput(BaseModel):
     index: int = Field(ge=0)
     stroke: list[list[float]] = Field(max_length=2000)
+    coordinates: str = Field(default="stage", pattern="^(stage|slide)$")
 
 
 @router.post("/api/v1/sessions/{sid}/annotations")

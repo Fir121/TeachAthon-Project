@@ -1,5 +1,9 @@
 import asyncio
 import json
+from contextlib import contextmanager
+from typing import Literal
+from concurrent.futures import ThreadPoolExecutor
+import time
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import select, delete, and_, or_, func, literal_column
 from ..config import settings
@@ -16,6 +20,10 @@ from ..models import (
     Job,
 )
 from .providers.openai import OpenAIEmbeddings, OpenAIText
+
+# Shared bounded executor survives each synchronous route's short async orchestration loop.
+# Cancelling a deadline never waits for asyncio.run() to join a blocked default executor.
+_retrieval_pool = ThreadPoolExecutor(max_workers=4, thread_name_prefix="course-retrieval")
 
 
 def embedding_compatible(db):
@@ -53,7 +61,15 @@ def safe_scope(cid):
         )
         .exists()
     )
-    answer_ok = select(Answer.id).where(Answer.id == SourceChunk.answer_id, Answer.visibility == "public").exists()
+    answer_ok = (
+        select(Answer.id)
+        .where(
+            Answer.id == SourceChunk.answer_id,
+            Answer.question_id == SourceChunk.question_id,
+            Answer.visibility == "public",
+        )
+        .exists()
+    )
     return and_(
         SourceChunk.course_id == cid,
         or_(
@@ -61,6 +77,8 @@ def safe_scope(cid):
             and_(SourceChunk.session_id.is_not(None), session_ok),
             and_(SourceChunk.question_id.is_not(None), question_ok),
         ),
+        or_(SourceChunk.resource_id.is_(None), resource_ok),
+        or_(SourceChunk.session_id.is_(None), session_ok),
         or_(SourceChunk.question_id.is_(None), question_ok),
         or_(SourceChunk.answer_id.is_(None), answer_ok),
     )
@@ -85,206 +103,463 @@ async def embed_chunks(db, chunks):
         db.commit()
 
 
-def index_resource(db, job):
-    r = db.get(Resource, job.target_id)
-    if not r:
-        return
-    db.execute(delete(SourceChunk).where(SourceChunk.resource_id == r.id))
+def resource_chunks(resource, pages):
+    from .chunking import split_text
+
     chunks = []
-    if r.indexing_enabled and r.process_status == "ready":
-        for i, page in enumerate(r.pages):
-            text = page.get("text", "").strip()
-            for j in range(0, len(text), 1800):
-                chunks.append(
-                    SourceChunk(
-                        course_id=r.course_id,
-                        resource_id=r.id,
-                        source_type="recording" if r.kind in {"audio", "video"} else "resource",
-                        title=r.original_filename,
-                        text=text[j : j + 2200],
-                        page_number=i + 1 if r.kind not in {"audio", "video"} else None,
-                        start_ms=page.get("start_ms"),
-                        end_ms=page.get("end_ms"),
-                    )
+    if not resource.indexing_enabled:
+        return chunks
+    physical = resource.kind in {"pdf", "pptx", "docx"}
+    for i, page in enumerate(pages):
+        for part in split_text(page.get("text", "")):
+            chunks.append(
+                SourceChunk(
+                    course_id=resource.course_id,
+                    resource_id=resource.id,
+                    source_type="recording" if resource.kind in {"audio", "video"} else "resource",
+                    title=resource.original_filename,
+                    text=part["text"],
+                    page_number=(page.get("page_number") or i + 1) if physical else None,
+                    start_ms=page.get("start_ms"),
+                    end_ms=page.get("end_ms"),
+                    chunk_metadata={k: v for k, v in part.items() if k != "text"}
+                    | {
+                        "source_section": i,
+                        "extraction_version": page.get("extraction_version", "utf8-or-transcript-v1"),
+                    },
                 )
+            )
+    return chunks
+
+
+def replace_resource_index(db, resource, pages):
+    chunks = resource_chunks(resource, pages)  # Build fully before touching the old index.
+    db.execute(delete(SourceChunk).where(SourceChunk.resource_id == resource.id))
     db.add_all(chunks)
+    return chunks
+
+
+def index_resource(db, job):
+    from .chunking import CHUNK_VERSION
+
+    resource = db.get(Resource, job.target_id)
+    if not resource or resource.process_status != "ready":
+        return
+    chunks = list(db.scalars(select(SourceChunk).where(SourceChunk.resource_id == resource.id)))
+    if not chunks or any(c.chunk_metadata.get("version") != CHUNK_VERSION for c in chunks):
+        chunks = replace_resource_index(db, resource, resource.pages)
+    if not resource.indexing_enabled:
+        db.execute(delete(SourceChunk).where(SourceChunk.resource_id == resource.id))
+        chunks = []
+    resource.extraction_json = {**resource.extraction_json, "chunk_version": CHUNK_VERSION}
     db.commit()
-    asyncio.run(embed_chunks(db, chunks))
+    asyncio.run(embed_chunks(db, [c for c in chunks if c.embedding is None]))
 
 
 def index_session(db, job):
-    s = db.get(LiveSession, job.target_id)
-    if not s:
+    from .chunking import split_text
+
+    session = db.get(LiveSession, job.target_id)
+    if not session:
         return
-    lecture = db.get(Lecture, s.lecture_id)
-    existing = list(db.scalars(select(SourceChunk).where(SourceChunk.session_id == s.id)))
-    known = {(c.start_ms, c.end_ms, c.text) for c in existing}
+    lecture = db.get(Lecture, session.lecture_id)
+    existing = list(db.scalars(select(SourceChunk).where(SourceChunk.session_id == session.id)))
+    # Reuse valid vectors during incremental caption indexing, while replacing older chunk versions.
+    by_source = {(c.chunk_metadata.get("transcript_id"), c.chunk_metadata.get("start_char")): c for c in existing}
     chunks = []
-    for t in db.scalars(select(Transcript).where(Transcript.session_id == s.id)):
-        if t.text.strip() and (t.start_ms, t.end_ms, t.text) not in known:
+    kept_ids = set()
+    for transcript in db.scalars(select(Transcript).where(Transcript.session_id == session.id)):
+        for part in split_text(transcript.text):
+            key = (transcript.id, part["start_char"])
+            old = by_source.pop(key, None)
+            if old and old.text == part["text"] and old.chunk_metadata.get("version") == part["version"]:
+                kept_ids.add(old.id)
+                chunks.append(old)
+                continue
+            if old:
+                db.delete(old)
             chunks.append(
                 SourceChunk(
-                    course_id=s.course_id,
-                    session_id=s.id,
+                    course_id=session.course_id,
+                    session_id=session.id,
                     source_type="lecture_explanation",
                     title=lecture.title,
-                    text=t.text[:8000],
-                    start_ms=t.start_ms,
-                    end_ms=t.end_ms,
+                    text=part["text"],
+                    start_ms=transcript.start_ms,
+                    end_ms=transcript.end_ms,
+                    chunk_metadata={k: v for k, v in part.items() if k != "text"}
+                    | {"transcript_id": transcript.id, "timing": transcript.timing},
                 )
             )
+    for stale in existing:
+        if stale.id not in kept_ids and stale not in db.deleted:
+            db.delete(stale)
     db.add_all(chunks)
     db.commit()
-    asyncio.run(embed_chunks(db, [*chunks, *[c for c in existing if c.embedding is None]]))
+    asyncio.run(embed_chunks(db, [c for c in chunks if c.embedding is None]))
 
 
 def index_question(db, job):
-    q = db.get(Question, job.target_id)
-    db.execute(delete(SourceChunk).where(SourceChunk.question_id == job.target_id))
+    from .chunking import split_text
+
+    question = db.get(Question, job.target_id)
     chunks = []
-    if q and q.visibility == "public" and q.state != "dismissed":
-        chunks.append(
-            SourceChunk(
-                course_id=q.course_id,
-                question_id=q.id,
-                source_type="question",
-                title="Public course question",
-                text=q.body_display,
-            )
-        )
-        for a in db.scalars(select(Answer).where(Answer.question_id == q.id, Answer.visibility == "public")):
-            chunks.append(
-                SourceChunk(
-                    course_id=q.course_id,
-                    question_id=q.id,
-                    answer_id=a.id,
-                    source_type="lecturer_answer" if a.lecturer_authored else "forum_reply",
-                    title="Lecturer written answer" if a.lecturer_authored else "Public discussion reply",
-                    text=a.body,
+    if question and question.visibility == "public" and question.state != "dismissed":
+        sources = [(question.body_display, None)]
+        sources += [
+            (a.body, a)
+            for a in db.scalars(select(Answer).where(Answer.question_id == question.id, Answer.visibility == "public"))
+        ]
+        for text, answer in sources:
+            for part in split_text(text):
+                chunks.append(
+                    SourceChunk(
+                        course_id=question.course_id,
+                        question_id=question.id,
+                        answer_id=answer.id if answer else None,
+                        source_type=("lecturer_answer" if answer.lecturer_authored else "forum_reply")
+                        if answer
+                        else "question",
+                        title=question.body_original[:160],
+                        text=part["text"],
+                        chunk_metadata={k: v for k, v in part.items() if k != "text"},
+                    )
                 )
-            )
+    db.execute(delete(SourceChunk).where(SourceChunk.question_id == job.target_id))
     db.add_all(chunks)
     db.commit()
     asyncio.run(embed_chunks(db, chunks))
 
 
-def citation(chunk, score):
-    if chunk.session_id:
-        url = f"/recordings/{chunk.session_id}?t={chunk.start_ms or 0}"
-        category = "relevant_lecture_explanation"
-    elif chunk.resource_id:
-        url = f"/resources/{chunk.resource_id}"
-        if chunk.page_number is not None:
-            url += f"?page={chunk.page_number}"
-        if chunk.start_ms is not None:
-            url = f"/resources/{chunk.resource_id}?t={chunk.start_ms}"
-        category = "relevant_material"
-    else:
-        url = f"/courses/{chunk.course_id}/discussions?question={chunk.question_id}"
-        category = (
-            "existing_lecturer_answer"
-            if chunk.source_type == "lecturer_answer"
-            else "relevant_public_discussion"
-            if chunk.answer_id
-            else "similar_public_question"
+class SourceLocation(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    page_number: int | None = None
+    start_ms: int | None = None
+    end_ms: int | None = None
+    url: str
+
+
+class SourceGroup(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    source_id: str  # Stable parent ID, never a chunk ID.
+    source_type: Literal["document", "recording", "discussion"]
+    title: str
+    url: str
+    locations: list[SourceLocation]
+    question_id: str | None = None
+    audio_available: bool | None = None
+    score: float
+
+
+class SearchResponse(BaseModel):
+    matches: list[SourceGroup]
+    warnings: list[str]
+
+
+class PreflightResponse(BaseModel):
+    preflight_token: str
+    status: str
+    error: str | None
+    matches: list[SourceGroup]
+    method: str
+    generated_answer: str | None
+
+
+class SearchMatches(list):
+    """Only list contents serialize; internal contexts never enter the public response."""
+
+    def __init__(self, groups, contexts):
+        super().__init__(groups)
+        self.contexts = contexts
+
+
+def group_hits(db, hits, unlocated=None):
+    unlocated = unlocated or set()
+    groups = {}
+    contexts = {}
+    for chunk, score in sorted(hits, key=lambda item: item[1], reverse=True):
+        parent = chunk.resource_id or chunk.session_id or chunk.question_id
+        kind = (
+            "document"
+            if chunk.resource_id and chunk.source_type != "recording"
+            else "recording"
+            if chunk.resource_id or chunk.session_id
+            else "discussion"
         )
-    return {
-        "source_id": chunk.id,
-        "question_id": chunk.question_id,
-        "source_type": chunk.source_type,
-        "title": chunk.title,
-        "excerpt": chunk.text[:1000],
-        "page_number": chunk.page_number,
-        "start_ms": chunk.start_ms,
-        "end_ms": chunk.end_ms,
-        "url": url,
-        "category": category,
-        "score": round(score, 4),
+        key = (kind, parent)
+        if key not in groups:
+            if chunk.resource_id:
+                source = db.get(Resource, chunk.resource_id)
+                title, url, available = source.original_filename, f"/resources/{parent}", None
+            elif chunk.session_id:
+                session = db.get(LiveSession, chunk.session_id)
+                title, url, available = (
+                    db.get(Lecture, session.lecture_id).title,
+                    f"/recordings/{parent}",
+                    session.recording_state == "ready",
+                )
+            else:
+                question = db.get(Question, chunk.question_id)
+                title, url, available = (
+                    question.body_original[:160],
+                    f"/courses/{chunk.course_id}/discussions?question={parent}",
+                    None,
+                )
+            groups[key] = {
+                "source_id": parent,
+                "source_type": kind,
+                "title": title,
+                "url": url,
+                "question_id": chunk.question_id if kind == "discussion" else None,
+                "audio_available": available,
+                "score": round(score, 4),
+                "locations": [],
+            }
+            contexts[key] = []
+        group = groups[key]
+        page = chunk.page_number if kind == "document" and chunk.id not in unlocated else None
+        # Old TXT/JSON chunks may carry fabricated page numbers until their backfill runs.
+        if chunk.resource_id and db.get(Resource, chunk.resource_id).kind not in {"pdf", "pptx", "docx"}:
+            page = None
+        start = chunk.start_ms if kind == "recording" and chunk.id not in unlocated else None
+        url = group["url"] + (f"?page={page}" if page is not None else f"?t={start}" if start is not None else "")
+        location = {
+            "page_number": page,
+            "start_ms": start,
+            "end_ms": chunk.end_ms if start is not None else None,
+            "url": url,
+        }
+        # Deduplicate physical page / start offset, even when multiple chunks overlap.
+        if (page is not None or start is not None) and not any(
+            l["page_number"] == page and l["start_ms"] == start for l in group["locations"]
+        ):
+            group["locations"].append(location)
+        contexts[key].append({"source_id": parent, "text": chunk.text, "url": url})
+    keys = list(groups)[:8]  # Limit AFTER grouping by best qualifying hit.
+    for key in keys:
+        groups[key]["locations"].sort(key=lambda location: (location["page_number"] or 0, location["start_ms"] or 0))
+        if groups[key]["locations"]:
+            groups[key]["url"] = groups[key]["locations"][0]["url"]
+    return SearchMatches([groups[k] for k in keys], [context for k in keys for context in contexts[k]][:40])
+
+
+async def search(db, cid, query, mode="preflight"):
+    # A separate session belongs to the worker thread. No synchronous SQL on the live event loop.
+    budget = settings().retrieval_timeout_seconds
+    future = asyncio.get_running_loop().run_in_executor(
+        _retrieval_pool, _search, db.get_bind(), cid, query, budget, time.monotonic(), mode
+    )
+    return await asyncio.wait_for(future, timeout=budget)
+
+
+@contextmanager
+def deadline_session(bind, budget):
+    import time
+    from sqlalchemy.orm import Session
+    from sqlalchemy import event
+
+    deadline = time.monotonic() + budget
+    with Session(bind, expire_on_commit=False) as db:
+        connection = db.connection()
+
+        def bound_query(conn, cursor, statement, parameters, context, executemany):
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError("Retrieval deadline reached")
+            if bind.dialect.name == "postgresql":
+                cursor.execute(f"SET LOCAL statement_timeout = {max(1, int(remaining * 1000))}")
+
+        event.listen(connection, "before_cursor_execute", bound_query)
+        try:
+            yield db, deadline
+        finally:
+            event.remove(connection, "before_cursor_execute", bound_query)
+
+
+def _search(bind, cid, query, budget, requested_at=None, mode="preflight"):
+    budget -= time.monotonic() - requested_at if requested_at is not None else 0
+    with deadline_session(bind, budget) as (db, deadline):
+        return _keyword_search(db, cid, query, deadline) if mode == "keywords" else _retrieve(db, cid, query, deadline)
+
+
+def _keyword_search(db, cid, query, deadline):
+    from .keywords import keyword_match, tokens
+
+    if not tokens(query):
+        return SearchMatches([], []), []
+    scope = safe_scope(cid)
+    # Current parent titles participate, rather than stale titles saved in old chunks.
+    resources = {r.id: r for r in db.scalars(select(Resource).where(Resource.course_id == cid))}
+    sessions = {s.id: s for s in db.scalars(select(LiveSession).where(LiveSession.course_id == cid))}
+    lectures = {l.id: l.title for l in db.scalars(select(Lecture).where(Lecture.course_id == cid))}
+    questions = {
+        q.id: q
+        for q in db.scalars(
+            select(Question).where(
+                Question.course_id == cid, Question.visibility == "public", Question.state != "dismissed"
+            )
+        )
     }
+    hits, unlocated, indexed = [], set(), set()
+    statement = select(SourceChunk).where(scope)
+    if db.bind.dialect.name == "postgresql":
+        body_match = func.to_tsvector(literal_column("'english'"), SourceChunk.text).op("@@")(
+            func.websearch_to_tsquery(literal_column("'english'"), " OR ".join(tokens(query)))
+        )
+        title_match = or_(
+            SourceChunk.resource_id.in_(
+                [rid for rid, resource in resources.items() if keyword_match(query, "", resource.original_filename)]
+            ),
+            SourceChunk.session_id.in_(
+                [sid for sid, session in sessions.items() if keyword_match(query, "", lectures[session.lecture_id])]
+            ),
+            SourceChunk.question_id.in_(
+                [qid for qid, question in questions.items() if keyword_match(query, "", question.body_original)]
+            ),
+        )
+        statement = statement.where(or_(body_match, title_match))
+    # Candidate collection uses FTS; qualification and the eight-result cap follow grouping.
+    for chunk in db.scalars(statement):
+        if time.monotonic() >= deadline:
+            raise TimeoutError("Keyword search deadline reached")
+        if chunk.resource_id:
+            title = resources[chunk.resource_id].original_filename
+        elif chunk.session_id:
+            title = lectures[sessions[chunk.session_id].lecture_id]
+        else:
+            title = questions[chunk.question_id].body_original
+            indexed.add(chunk.question_id)
+        match = keyword_match(query, chunk.text, title)
+        if match:
+            score, located = match
+            hits.append((chunk, score))
+            if not located:
+                unlocated.add(chunk.id)
+    for question in questions.values():
+        if question.id in indexed:
+            continue
+        match = keyword_match(query, question.body_display, question.body_original)
+        if match:
+            hits.append(
+                (
+                    SourceChunk(
+                        id=question.id,
+                        course_id=cid,
+                        question_id=question.id,
+                        source_type="question",
+                        title=question.body_original[:160],
+                        text=question.body_display,
+                    ),
+                    match[0],
+                )
+            )
+    # Recheck current visibility/exclusions, including changes while scanning large courses.
+    allowed = set(db.scalars(select(SourceChunk.id).where(scope)))
+    public_questions = set(
+        db.scalars(
+            select(Question.id).where(
+                Question.course_id == cid, Question.visibility == "public", Question.state != "dismissed"
+            )
+        )
+    )
+    hits = [
+        (chunk, score)
+        for chunk, score in hits
+        if chunk.id in allowed or (chunk.id == chunk.question_id and chunk.question_id in public_questions)
+    ]
+    return group_hits(db, hits, unlocated), []
 
 
-async def search(db, cid, query):
+def _retrieve(db, cid, query, deadline):
+    import time
     from ..questions import lexical_score, words
 
     scope = safe_scope(cid)
-    candidates = {}
-    fts = {}
-    semantic = {}
-    warnings = []
+    candidates, fts, semantic, warnings = {}, {}, {}, []
     if db.bind.dialect.name == "postgresql":
         rank = func.ts_rank_cd(
             func.to_tsvector(literal_column("'english'"), SourceChunk.text),
             func.websearch_to_tsquery(literal_column("'english'"), query),
         )
+        # Candidate collection must allow partial lexical overlap: natural questions and
+        # OCR punctuation can fail an all-terms websearch even when the relevance gate passes.
+        terms = " | ".join(sorted(words(query)))
+        vector_text = func.to_tsvector(literal_column("'english'"), SourceChunk.text)
+        keyword_match = vector_text.op("@@")(func.to_tsquery(literal_column("'english'"), terms)) if terms else rank > 0
+        # No chunk cap before source grouping; retain the original full-text ranking term.
         for chunk, score in db.execute(
-            select(SourceChunk, rank.label("rank")).where(scope, rank > 0).order_by(rank.desc()).limit(50)
+            select(SourceChunk, rank.label("rank")).where(scope, keyword_match).order_by(rank.desc())
         ):
-            candidates[chunk.id] = chunk
-            fts[chunk.id] = float(score)
+            candidates[chunk.id], fts[chunk.id] = chunk, float(score)
     else:
-        for c in db.scalars(select(SourceChunk).where(scope).limit(1000)):
-            candidates[c.id] = c
+        for chunk in db.scalars(select(SourceChunk).where(scope)):
+            candidates[chunk.id] = chunk
     if settings().openai_api_key:
         try:
             embedding_compatible(db)
-            vector = (await asyncio.wait_for(OpenAIEmbeddings().embed([query[:8000]]), timeout=3))[0]
+            timeout = min(settings().query_embedding_timeout_seconds, max(0.01, deadline - time.monotonic()))
+
+            async def query_vector():
+                return await asyncio.wait_for(
+                    OpenAIEmbeddings().embed([query[:8000]], timeout=timeout), timeout=timeout
+                )
+
+            vector = asyncio.run(query_vector())[0]
             if db.bind.dialect.name == "postgresql":
                 distance = SourceChunk.embedding.cosine_distance(vector)
-                for c, d in db.execute(
+                # Threshold before grouping; no chunk-based result cap.
+                for chunk, value in db.execute(
                     select(SourceChunk, distance)
                     .where(
                         scope,
                         SourceChunk.embedding_model == settings().openai_embed_model,
                         SourceChunk.embedding.is_not(None),
+                        distance <= 0.22,
                     )
                     .order_by(distance)
-                    .limit(30)
                 ):
-                    candidates[c.id] = c
-                    semantic[c.id] = 1 - float(d)
-        except Exception as exc:
-            warnings.append(
-                str(exc)
-                if isinstance(exc, RuntimeError)
-                else "Semantic search is unavailable; keyword results are shown."
-            )
-    results = []
-    for c in candidates.values():
-        lexical = lexical_score(query, c.text)
-        overlap = len(words(query) & words(c.text))
-        sim = semantic.get(c.id, 0)
-        if not ((lexical >= 0.45 and overlap >= 2) or sim >= 0.78):
+                    candidates[chunk.id], semantic[chunk.id] = chunk, 1 - float(value)
+        except Exception:
+            warnings.append("Semantic search is unavailable; keyword results are shown.")
+    # Recheck current authorization after provider latency, including exclusions/private edits.
+    permitted = set(db.scalars(select(SourceChunk.id).where(scope)))
+    hits = []
+    for chunk in candidates.values():
+        if time.monotonic() >= deadline:
+            raise TimeoutError("Retrieval deadline reached")
+        if chunk.id not in permitted:
             continue
-        score = 0.6 * lexical + 0.35 * max(0, sim) + 0.05 * min(1, fts.get(c.id, 0))
-        item = citation(c, score)
-        if c.session_id:
-            session = db.get(LiveSession, c.session_id)
-            item["audio_available"] = session.recording_state == "ready"
-            if not item["audio_available"]:
-                item["category"] = "relevant_lecture_transcript"
-        results.append(item)
-    # Public current questions are checked even before their indexing job completes.
+        lexical, overlap = lexical_score(query, chunk.text), len(words(query) & words(chunk.text))
+        sim = semantic.get(chunk.id, 0)
+        if (lexical >= 0.45 and overlap >= 2) or sim >= 0.78:
+            score = 0.6 * lexical + 0.35 * max(0, sim) + 0.05 * min(1, fts.get(chunk.id, 0))
+            hits.append((chunk, score))
     indexed_questions = {c.question_id for c in candidates.values() if c.question_id}
-    for q in db.scalars(
-        select(Question)
-        .where(Question.course_id == cid, Question.visibility == "public", Question.state != "dismissed")
-        .limit(500)
+    for question in db.scalars(
+        select(Question).where(
+            Question.course_id == cid, Question.visibility == "public", Question.state != "dismissed"
+        )
     ):
-        score = lexical_score(query, q.body_display)
-        if q.id not in indexed_questions and score >= 0.6 and len(words(query) & words(q.body_display)) >= 2:
-            results.append(
-                {
-                    "source_id": q.id,
-                    "question_id": q.id,
-                    "source_type": "question",
-                    "title": "Existing public question",
-                    "excerpt": q.body_display[:700],
-                    "category": "similar_public_question",
-                    "score": score * 0.6,
-                    "url": f"/courses/{cid}/discussions?question={q.id}",
-                }
+        score = lexical_score(query, question.body_display)
+        if (
+            question.id not in indexed_questions
+            and score >= 0.6
+            and len(words(query) & words(question.body_display)) >= 2
+        ):
+            hits.append(
+                (
+                    SourceChunk(
+                        id=question.id,
+                        course_id=cid,
+                        question_id=question.id,
+                        source_type="question",
+                        title=question.body_original[:160],
+                        text=question.body_display,
+                    ),
+                    score * 0.6,
+                )
             )
-    return sorted(results, key=lambda r: r["score"], reverse=True)[:8], warnings
+    return group_hits(db, hits), warnings
 
 
 class GroundedAnswer(BaseModel):
@@ -294,15 +569,34 @@ class GroundedAnswer(BaseModel):
 
 
 async def optional_answer(db, cid, query, matches):
-    if not db.get(Course, cid).settings_json.get("generated_answers") or not matches:
-        return None
-    data = await asyncio.wait_for(
-        OpenAIText().structured(
-            f"Answer briefly only using these course sources. If insufficient return an empty answer. Cite source IDs. Question: {query}\nSources: {json.dumps(matches)}",
-            GroundedAnswer,
-        ),
-        timeout=3,
+    budget = settings().answer_timeout_seconds
+    future = asyncio.get_running_loop().run_in_executor(
+        _retrieval_pool, _answer, db.get_bind(), cid, query, matches, budget, time.monotonic()
     )
+    return await asyncio.wait_for(future, timeout=budget)
+
+
+def _answer(bind, cid, query, matches, budget, requested_at=None):
+    budget -= time.monotonic() - requested_at if requested_at is not None else 0
+    with deadline_session(bind, budget) as (db, deadline):
+        if not db.get(Course, cid).settings_json.get("generated_answers") or not matches:
+            return None
+    budget = max(0.01, deadline - time.monotonic())
+    contexts = getattr(matches, "contexts", [])
+    if not contexts:
+        return None
+
+    async def generate():
+        return await asyncio.wait_for(
+            OpenAIText().structured(
+                f"Answer briefly only using these course sources. If insufficient return an empty answer. Cite source IDs. Question: {query}\nSources: {json.dumps(contexts)}",
+                GroundedAnswer,
+                timeout=budget,
+            ),
+            timeout=budget,
+        )
+
+    data = asyncio.run(generate())
     allowed = {m["source_id"] for m in matches}
     if not data.source_ids or not set(data.source_ids) <= allowed:
         return None

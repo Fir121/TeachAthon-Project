@@ -4,8 +4,6 @@
 
 **Read first:** `AGENTS.md`, `docs/PRODUCT.md`, `docs/DECISIONS.md`, `docs/ARCHITECTURE.md`, `docs/DATA_MODEL.md`, `docs/API.md`, `docs/AI_MEDIA.md`, `docs/UI.md`, and `docs/IMPLEMENTATION.md`.
 
-**Codex kickoff:** use `CODEX_START_PROMPT.md` as the opening instruction after placing this folder at the root of a new repository. Do not confuse this specifications-only bundle with a completed application.
-
 ## Goals
 - An actual usable web app, not a clickable mockup, on **one Linux VM via Docker Compose**, with locally persistent media and database.
 - All core features integrated end-to-end; prioritize functional vertical slices over polishing disconnected screens.
@@ -32,6 +30,22 @@ Open **http://localhost:8080**. Register a lecturer, create a course, upload a P
 
 Set `OPENAI_API_KEY` in private `.env` and recreate API/worker for real captions, semantic search and topic intelligence. All AI adapters are server-side; questions and manual polls work during provider failure. Generated answers are OFF by default.
 
+### OCR models: `/opt/lectureloop/models`
+
+This is a directory **inside the worker container**, containing the local PaddleOCR ONNX models used to extract text and reading order from slides and PDFs:
+
+- `PP-OCRv5_mobile_det`: text detection.
+- `PP-OCRv5_mobile_rec`: text recognition.
+- `PP-DocLayout_plus-L`: page layout and reading order.
+
+Each model directory contains `inference.onnx` and `inference.yml`; `revisions.json` records their pinned revisions. These are shared model assets, not course uploads or OpenAI models. Uploaded documents and extraction checkpoints live separately in the persistent `/media` volume.
+
+**A new developer using Compose needs no separate model setup.** The `docker compose up --build -d` command above runs [model provisioning](apps/api/scripts/provision_ocr.py) while building the worker image. It downloads official PaddlePaddle artifacts from Hugging Face and verifies pinned revisions and SHA-256 checksums. The first uncached build needs internet access; subsequent builds reuse Docker's cached layers. Models remain in the image across container restarts. Local OCR requires no OpenAI key or runtime downloads. The local chunking tokenizer is provisioned separately at `/opt/lectureloop/tokenizer` during the image build.
+
+Leave `OCR_MODEL_ROOT=/opt/lectureloop/models` unchanged for Compose; do not create that directory on your host. Running the worker directly outside Docker requires separately installing its system/OCR dependencies, running the provisioning script from `apps/api` with `OCR_MODEL_ROOT` set to a writable local directory, and using that same path at runtime. Setting the variable alone does not download models. See [OCR provisioning and sizing](docs/DEPLOYMENT.md#local-ocr-provisioning-backfill-and-sizing) for details.
+
 See [deployment, checks and backups](docs/DEPLOYMENT.md) and [actual milestone evidence](docs/PROGRESS.md). API contract: http://localhost:8080/api/openapi.json . The implementation currently targets local Compose; the owner deferred VM deployment until a VM is ready.
 
-AI implementation and owner review spaces: [AI workflow review](docs/AI_WORKFLOW_REVIEW.md), including PDF extraction/indexing/display, provider inputs, storage, privacy, automatic decisions and known limitations.
+Maintained AI implementation reference: [AI workflow documentation](docs/AI_WORKFLOW.md), including PDF extraction/indexing/display, provider inputs, storage, privacy, automatic decisions and known limitations.
+
+Upload your profile picture from the avatar button. Lecturers can set course banners in Settings and lecture banners on lecture setup. Course Search accepts words (including single terms); all significant words must match, with local stemming for inflections. Question preflight continues to accept full questions. Lecture archives replay saved ink and clear events alongside audio.

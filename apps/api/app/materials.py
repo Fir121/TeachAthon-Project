@@ -310,6 +310,10 @@ def resource_json(r, db=None):
         else None
     )
     return {
+        "extraction_status": r.extraction_json.get("status", "pending"),
+        "extraction_completed_pages": r.extraction_json.get("completed_pages", 0),
+        "extraction_total_pages": r.extraction_json.get("total_pages", 0),
+        "extraction_error": r.extraction_json.get("error"),
         "index_status": job.status if job else "pending",
         "index_error": job.error_message if job else None,
         "id": r.id,
@@ -506,24 +510,44 @@ def delete_resource(rid: str, db: DB, user: Actor):
 def retry_resource(rid: str, db: DB, user: Actor):
     r = require(db, Resource, rid)
     member(db, r.course_id, user, True)
+    kind = (
+        "extract_document" if r.process_status == "ready" and r.kind in {"pdf", "pptx", "docx"} else "ingest_document"
+    )
     existing = db.scalar(
         select(Job)
-        .where(Job.target_id == rid, Job.type == "ingest_document", Job.status.in_(["queued", "processing"]))
+        .where(Job.target_id == rid, Job.type == kind, Job.status.in_(["queued", "processing"]))
         .with_for_update()
         .limit(1)
     )
     if existing and existing.status == "processing":
         raise HTTPException(409, "This resource is being processed. Wait for its result.")
-    r.process_status = "queued"
+    if kind == "ingest_document":
+        r.process_status = "queued"
+    else:
+        r.extraction_json = {**r.extraction_json, "status": "queued", "error": None}
     r.error_message = None
     if existing:
         existing.next_run_at = now()
         existing.attempts = 0
         existing.error_message = None
     else:
-        db.add(Job(type="ingest_document", course_id=r.course_id, target_id=rid))
+        db.add(Job(type=kind, course_id=r.course_id, target_id=rid))
     db.commit()
     return resource_json(r, db)
+
+
+def lecture_json(lecture):
+    from .pictures import image_url
+
+    return {
+        "id": lecture.id,
+        "course_id": lecture.course_id,
+        "title": lecture.title,
+        "slide_resource_id": lecture.slide_resource_id,
+        "outline_json": lecture.outline_json,
+        "created_at": lecture.created_at,
+        "banner_url": image_url(f"/lectures/{lecture.id}/banner", lecture.banner_key),
+    }
 
 
 class LectureInput(BaseModel):
@@ -540,7 +564,7 @@ def create_lecture(cid: str, data: LectureInput, db: DB, user: Actor):
     lecture = Lecture(course_id=cid, **data.model_dump())
     db.add(lecture)
     db.commit()
-    return lecture
+    return lecture_json(lecture)
 
 
 @router.get("/courses/{cid}/lectures")
@@ -553,9 +577,7 @@ def lectures(cid: str, db: DB, user: Actor):
     )
     return [
         {
-            "id": l.id,
-            "title": l.title,
-            "slide_resource_id": l.slide_resource_id,
+            **lecture_json(l),
             "session": (
                 {"id": session.id, "state": session.state}
                 if (session := db.scalar(select(LiveSession).where(LiveSession.lecture_id == l.id)))
@@ -570,7 +592,7 @@ def lectures(cid: str, db: DB, user: Actor):
 def get_lecture(lid: str, db: DB, user: Actor):
     lecture = require(db, Lecture, lid)
     member(db, lecture.course_id, user)
-    return lecture
+    return lecture_json(lecture)
 
 
 @router.get("/lectures/{lid}/slides")

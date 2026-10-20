@@ -46,3 +46,11 @@ Use PostgreSQL UUID primary keys, timestamptz timestamps, proper FKs / CASCADE o
 - Deleting a question should remove/soft-delete public text from search and UI quickly; historical lecturer-allowed audio passage can remain available without referencing a private question.
 - Anonymous question author ID NULL even if logged-in; for named questions stored author ID. No durable requester correlation in application logs or API response for anonymous questions.
 - Do not index private textual answers into public RAG; source chunks must carry and enforce visibility.
+
+## Implemented extraction metadata (migration 0010)
+
+`resources.extraction_json` stores extraction status, target/completed version, completed/total page counts and chunking version separately from rendering readiness. Private per-page OCR JSON checkpoints retain ordered blocks, labels, bounding boxes and model revision provenance; `resources.pages` refers to the current successful extraction. `source_chunks.chunk_metadata` stores splitter version, character offsets, source section and transcript/extraction provenance. Replacement page text and derived chunks commit atomically. Search result groups are transient API projections, not saved query history.
+
+## Implemented pictures and ink coordinates (migration 0011)
+
+Nullable `users.avatar_key`, `courses.banner_key` and `lectures.banner_key` reference private normalized image derivatives. API DTOs expose authenticated versioned URLs, never those storage keys. Photo uploads are not resources/source chunks and add no author link to anonymous questions. New `annotation.added` JSON includes `coordinates=slide`; older/missing markers are interpreted as `stage`. Both formats retain normalized points, slide index, timestamp and clear events in the same ordered event log.

@@ -48,6 +48,7 @@ export default function FeedbackNote({
         <label>
           What would help?
           <textarea
+            disabled={search.isPending || send.isPending}
             value={text}
             onChange={(e) => {
               setText(e.target.value);
@@ -69,6 +70,11 @@ export default function FeedbackNote({
         </button>
       </form>
       <Failure error={search.error} />
+      {search.isPending && (
+        <p role="status" className="muted small spaced">
+          Checking course sources. This can take up to 30 seconds.
+        </p>
+      )}
       {result && (
         <>
           <p className="muted small spaced">

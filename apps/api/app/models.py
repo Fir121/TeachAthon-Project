@@ -20,6 +20,7 @@ class User(Base):
     email: Mapped[str] = mapped_column(unique=True)
     password_hash: Mapped[str]
     role: Mapped[str]
+    avatar_key: Mapped[str | None]
     __table_args__ = (CheckConstraint("role IN ('student','lecturer')"),)
 
 
@@ -36,6 +37,7 @@ class Course(Base):
     name: Mapped[str]
     description: Mapped[str] = mapped_column(default="")
     discoverable: Mapped[bool] = mapped_column(default=True)
+    banner_key: Mapped[str | None]
     settings_json: Mapped[dict] = mapped_column(
         JSON, default=lambda: {"poll_mode": "manual", "poll_cooldown_seconds": 180, "generated_answers": False}
     )
@@ -102,6 +104,7 @@ class Resource(Base):
     error_message: Mapped[str | None]
     indexing_enabled: Mapped[bool] = mapped_column(default=True)
     pages: Mapped[list] = mapped_column(JSON, default=list)
+    extraction_json: Mapped[dict] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
@@ -110,6 +113,7 @@ class Lecture(Base):
     id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=uid)
     course_id: Mapped[str] = mapped_column(ForeignKey("courses.id", ondelete="CASCADE"))
     title: Mapped[str]
+    banner_key: Mapped[str | None]
     slide_resource_id: Mapped[str] = mapped_column(ForeignKey("resources.id", ondelete="CASCADE"))
     outline_json: Mapped[dict | None] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
@@ -287,6 +291,7 @@ class SourceChunk(Base):
     start_ms: Mapped[int | None]
     end_ms: Mapped[int | None]
     embedding: Mapped[list | None] = mapped_column(Vector().with_variant(JSON, "sqlite"))
+    chunk_metadata: Mapped[dict] = mapped_column(JSON, default=dict)
     embedding_model: Mapped[str | None]
 
 

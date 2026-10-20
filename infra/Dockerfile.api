@@ -1,9 +1,24 @@
-FROM python:3.12-slim
-RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg libreoffice-impress libreoffice-writer libmagic1 fonts-dejavu && rm -rf /var/lib/apt/lists/*
+FROM python:3.12-slim AS base
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg libreoffice-impress libreoffice-writer libmagic1 fonts-dejavu poppler-utils libglib2.0-0 libgomp1 && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY apps/api/requirements.lock ./
 RUN pip install --no-cache-dir -r requirements.lock
-COPY apps/api/ .
+ENV TIKTOKEN_CACHE_DIR=/opt/lectureloop/tokenizer
+RUN mkdir -p "$TIKTOKEN_CACHE_DIR" && python -c "import tiktoken; tiktoken.get_encoding('cl100k_base')"
 RUN useradd -m -u 10001 lectureloop && mkdir -p /media && chown lectureloop:lectureloop /media
+
+FROM base AS worker
+COPY apps/api/requirements-ocr.lock ./
+RUN pip install --no-cache-dir -r requirements-ocr.lock
+ENV OCR_MODEL_ROOT=/opt/lectureloop/models PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK=True OMP_NUM_THREADS=2 OPENBLAS_NUM_THREADS=2
+COPY apps/api/app/ocr_models.json apps/api/app/ocr_checksums.json ./app/
+COPY apps/api/scripts/provision_ocr.py ./scripts/provision_ocr.py
+RUN python scripts/provision_ocr.py
+COPY apps/api/ ./
+USER lectureloop
+CMD ["python", "-m", "app.worker"]
+
+FROM base AS api
+COPY apps/api/ ./
 USER lectureloop
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--no-access-log"]

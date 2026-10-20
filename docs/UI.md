@@ -28,3 +28,11 @@ Clean modern education SaaS inspired by EdStem and University of Edinburgh gener
 - Works at ~360px mobile width and wide lecturer desktop; presenter can fullscreen and lecturer can open separate window.
 - Core task should require few steps; keyboard arrows advance slides; students can answer poll and post question with minimal taps.
 - Loading states for indexing, retrieval, transcription and recording reflect real backend state.
+
+## Current refinements — 2026-10-20
+
+Profile avatar opens a browser-history-backed profile dialog with picture preview/upload/remove. Course settings manage a course banner; lecture setup has a banner dialog. Actual images appear on course cards/headers and lecture cards/setup/archive, with neutral icon fallbacks when absent. Upload help and errors remain next to the controls.
+
+Course Search asks for **Search words**, supports a single word or short technical term and explains that all significant words must match. Query terms are stemmed locally; phrases/nearby terms rank higher; missing terms do not produce vague semantic-only substitutes. Existing question and poll-note preflight still accepts questions.
+
+Archive navigation, eyebrow and title occupy separate rows. Saved annotation/clear events are replayed at audio time, including when seeking backward. New ink coordinates refer to the slide image instead of its surrounding letterboxed frame; older events retain their original format.

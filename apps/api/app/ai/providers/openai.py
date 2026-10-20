@@ -17,8 +17,8 @@ def headers():
     return {"Authorization": f"Bearer {settings().openai_api_key}"}
 
 
-async def request(path, payload=None, **kwargs):
-    async with httpx.AsyncClient(timeout=60, base_url=settings().openai_base_url) as client:
+async def request(path, payload=None, timeout=60, **kwargs):
+    async with httpx.AsyncClient(timeout=timeout, base_url=settings().openai_base_url) as client:
         r = await client.post(path, headers=headers(), json=payload, **kwargs)
         if r.is_error:
             raise RuntimeError(
@@ -28,10 +28,10 @@ async def request(path, payload=None, **kwargs):
 
 
 class OpenAIText:
-    async def structured(self, prompt: str, schema: type[BaseModel]):
+    async def structured(self, prompt: str, schema: type[BaseModel], *, timeout=60):
         result = await request(
             "/responses",
-            {
+            payload={
                 "model": settings().openai_text_model,
                 "input": [
                     {
@@ -49,6 +49,7 @@ class OpenAIText:
                     }
                 },
             },
+            timeout=timeout,
         )
         texts = [
             item["text"]
@@ -62,10 +63,15 @@ class OpenAIText:
 
 
 class OpenAIEmbeddings:
-    async def embed(self, texts):
+    async def embed(self, texts, *, timeout=60):
         result = await request(
             "/embeddings",
-            {"model": settings().openai_embed_model, "input": texts, "dimensions": settings().openai_embed_dimensions},
+            payload={
+                "model": settings().openai_embed_model,
+                "input": texts,
+                "dimensions": settings().openai_embed_dimensions,
+            },
+            timeout=timeout,
         )
         vectors = [d["embedding"] for d in sorted(result["data"], key=lambda d: d["index"])]
         if len(vectors) != len(texts) or any(len(v) != settings().openai_embed_dimensions for v in vectors):

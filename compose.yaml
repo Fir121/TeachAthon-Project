@@ -41,7 +41,8 @@ services:
     logging: *default-logging
     restart: unless-stopped
   worker:
-    build: {context: ., dockerfile: infra/Dockerfile.api}
+    stop_grace_period: 11m
+    build: {context: ., dockerfile: infra/Dockerfile.api, target: worker}
     env_file: [.env]
     environment: *api-env
     command: ["python", "-m", "app.worker"]

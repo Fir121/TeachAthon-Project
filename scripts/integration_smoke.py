@@ -8,7 +8,8 @@ import time
 import uuid
 from pathlib import Path
 import httpx
-import pymupdf
+from reportlab.pdfgen import canvas
+import io
 
 
 def wait(check,timeout=55):
@@ -23,18 +24,22 @@ def wait(check,timeout=55):
 def main(audio):
     if os.getenv('RUN_OPENAI_SMOKE')!='1':raise SystemExit('Set RUN_OPENAI_SMOKE=1 to allow paid API calls.')
     suffix=uuid.uuid4().hex[:8]
-    with httpx.Client(base_url='http://localhost:8080/api/v1',timeout=15) as t,httpx.Client(base_url='http://localhost:8080/api/v1',timeout=15) as s:
+    with httpx.Client(base_url='http://localhost:8080/api/v1',timeout=35) as t,httpx.Client(base_url='http://localhost:8080/api/v1',timeout=35) as s:
         for client,role in [(t,'lecturer'),(s,'student')]:
             r=client.post('/auth/register',json={'name':f'Integration {role}','email':f'integration-{role}-{suffix}@example.com','password':'integration-test-password','role':role});r.raise_for_status()
         course=t.post('/courses',json={'name':f'Integration validation {suffix}'}).json();cid=course['id']
         assert course['settings']['generated_answers'] is False
         try:
             t.post(f'/courses/{cid}/members',json={'email':f'integration-student-{suffix}@example.com'}).raise_for_status()
-            with pymupdf.open() as doc:
-                p=doc.new_page(width=960,height=540);p.insert_text((60,100),'Binary search halves a sorted interval at each comparison.',fontsize=24)
-                p.insert_text((60,160),'The number of comparisons grows logarithmically.',fontsize=24)
-                content=doc.tobytes()
+            stream = io.BytesIO()
+            doc = canvas.Canvas(stream, pagesize=(960, 540))
+            doc.setFont('Helvetica',24)
+            doc.drawString(60, 440, 'Binary search halves a sorted interval at each comparison.')
+            doc.drawString(60, 380, 'The number of comparisons grows logarithmically.')
+            doc.save()
+            content = stream.getvalue()
             r=t.post(f'/courses/{cid}/resources',files={'file':('search.pdf',content,'application/pdf')});r.raise_for_status();rid=r.json()['id']
+            wait(lambda:t.get(f'/resources/{rid}').json()['extraction_status']=='ready', timeout=120)
             wait(lambda:t.get(f'/resources/{rid}').json()['index_status']=='ready')
             settings={'poll_mode':'manual','poll_cooldown_seconds':60,'generated_answers':True}
             t.patch(f'/courses/{cid}/settings',json=settings).raise_for_status()
@@ -68,7 +73,7 @@ def main(audio):
             transcript=s.get(f'/resources/{media_id}/transcript').json()
             assert transcript and 'binary' in transcript[0]['text'].lower() and transcript[0]['start_ms']==0
             results=s.get(f'/courses/{cid}/search',params={'q':'binary search sorted interval'}).json()['matches']
-            assert any(m['source_type']=='recording' and m['start_ms']==0 and '/resources/' in m['url'] for m in results)
+            assert any(m['source_type']=='recording' and m['locations'][0]['start_ms']==0 and '/resources/' in m['url'] for m in results)
             print('Real MP3 batch transcription + mapped input offsets + cited media retrieval: PASS')
         finally:
             r=t.delete(f'/courses/{cid}');assert r.status_code==204,r.text

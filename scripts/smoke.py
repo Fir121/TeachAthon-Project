@@ -2,13 +2,14 @@
 import time
 import uuid
 import httpx
-import pymupdf
+from reportlab.pdfgen import canvas
+import io
 
 BASE="http://localhost:8080/api/v1"
 
 def main():
     suffix=uuid.uuid4().hex[:8]
-    with httpx.Client(base_url=BASE,timeout=15) as t,httpx.Client(base_url=BASE,timeout=15) as s:
+    with httpx.Client(base_url=BASE,timeout=35) as t,httpx.Client(base_url=BASE,timeout=35) as s:
         for client,role in [(t,"lecturer"),(s,"student")]:
             r=client.post('/auth/register',json={'name':f'Smoke {role}','email':f'{role}-{suffix}@example.com','password':'smoke-test-password','role':role})
             assert r.status_code==201,r.text
@@ -18,10 +19,13 @@ def main():
         s.post(f'/courses/{cid}/join-requests').raise_for_status()
         t.post(f'/courses/{cid}/join-requests/{uid}/approve').raise_for_status()
         assert s.get(f'/courses/{cid}').status_code==200
-        with pymupdf.open() as doc:
-            p=doc.new_page();p.insert_text((60,60),'Binary search halves a sorted search space. Complexity is logarithmic.')
-            p=doc.new_page();p.insert_text((60,60),'Invariants: maintain a valid search interval.')
-            content=doc.tobytes()
+        stream = io.BytesIO()
+        doc = canvas.Canvas(stream)
+        doc.drawString(60, 700, 'Binary search halves a sorted search space. Complexity is logarithmic.')
+        doc.showPage()
+        doc.drawString(60, 700, 'Invariants: maintain a valid search interval.')
+        doc.save()
+        content = stream.getvalue()
         r=t.post(f'/courses/{cid}/resources',files={'file':('smoke.pdf',content,'application/pdf')})
         assert r.status_code==202,r.text
         rid=r.json()['id']

@@ -93,51 +93,11 @@ def lexical_score(query, text):
     return len(a & b) / len(a) if a else 0
 
 
-def baseline_search(db, cid, text):
-    matches = []
-    for r in db.scalars(
-        select(Resource)
-        .where(Resource.course_id == cid, Resource.indexing_enabled.is_(True), Resource.process_status == "ready")
-        .limit(500)
-    ):
-        for i, p in enumerate(r.pages):
-            score = lexical_score(text, p.get("text", ""))
-            if score >= 0.45 and len(words(text) & words(p.get("text", ""))) >= 2:
-                matches.append(
-                    {
-                        "source_id": r.id,
-                        "source_type": "resource",
-                        "title": r.original_filename,
-                        "excerpt": p["text"][:700],
-                        "page_number": i + 1,
-                        "score": score,
-                        "category": "relevant_material",
-                        "url": f"/resources/{r.id}?page={i + 1}",
-                    }
-                )
-    for q in db.scalars(
-        select(Question)
-        .where(Question.course_id == cid, Question.visibility == "public", Question.state != "dismissed")
-        .limit(500)
-    ):
-        score = lexical_score(text, q.body_display)
-        if score >= 0.6 and len(words(text) & words(q.body_display)) >= 2:
-            matches.append(
-                {
-                    "source_id": q.id,
-                    "source_type": "question",
-                    "title": "Existing public question",
-                    "excerpt": q.body_display[:700],
-                    "score": score,
-                    "category": "similar_public_question",
-                    "url": f"/courses/{cid}/discussions?question={q.id}",
-                }
-            )
-    return sorted(matches, key=lambda m: m["score"], reverse=True)[:8]
+from .ai.retrieval import PreflightResponse, SearchResponse
 
 
-@router.post("/courses/{cid}/questions/preflight")
-async def preflight(cid: str, data: PreflightInput, db: DB, user: Actor):
+@router.post("/courses/{cid}/questions/preflight", response_model=PreflightResponse)
+def preflight(cid: str, data: PreflightInput, db: DB, user: Actor):
     member(db, cid, user)
     if data.session_id:
         session, _ = live(db, data.session_id, user)
@@ -150,13 +110,13 @@ async def preflight(cid: str, data: PreflightInput, db: DB, user: Actor):
     generated = None
     method = "course keyword search"
     try:
-        matches, warnings = await asyncio.wait_for(search(db, cid, data.text), timeout=5)
+        matches, warnings = asyncio.run(search(db, cid, data.text))
         if settings().openai_api_key:
             method = "semantic and keyword course search"
         if warnings:
             error = " ".join(warnings)
         try:
-            generated = await optional_answer(db, cid, data.text, matches)
+            generated = asyncio.run(optional_answer(db, cid, data.text, matches))
         except Exception:
             error = (error or "") + " Optional AI summary is unavailable; use the original sources."
     except Exception:
@@ -432,12 +392,16 @@ def match_status(qid: str, db: DB, user: Actor):
     return q.match_json
 
 
-@router.get("/courses/{cid}/search")
-async def course_search(cid: str, db: DB, user: Actor, q: str = Query(min_length=3, max_length=8000)):
+@router.get("/courses/{cid}/search", response_model=SearchResponse)
+def course_search(cid: str, db: DB, user: Actor, q: str = Query(min_length=1, max_length=200)):
     member(db, cid, user)
     from .ai.retrieval import search
+    import asyncio
 
-    matches, warnings = await search(db, cid, q)
+    try:
+        matches, warnings = asyncio.run(search(db, cid, q, mode="keywords"))
+    except Exception:
+        raise HTTPException(503, "Course search timed out or is unavailable. Retry your search.") from None
     return {"matches": matches, "warnings": warnings}
 
 

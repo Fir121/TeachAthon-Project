@@ -105,7 +105,15 @@ class Login(BaseModel):
 
 
 def user_json(user):
-    return {"id": user.id, "name": user.name, "email": user.email, "role": user.role}
+    from .pictures import image_url
+
+    return {
+        "id": user.id,
+        "name": user.name,
+        "email": user.email,
+        "role": user.role,
+        "avatar_url": image_url("/auth/me/avatar", user.avatar_key),
+    }
 
 
 def sign_in(db, user, response):
@@ -174,7 +182,12 @@ class CourseInput(BaseModel):
 
 
 def course_json(course, membership=None):
+    from .pictures import image_url
+
     return {
+        "banner_url": image_url(f"/courses/{course.id}/banner", course.banner_key)
+        if membership and membership.status == "active"
+        else None,
         "id": course.id,
         "name": course.name,
         "description": course.description,
@@ -259,3 +272,7 @@ app.include_router(audio_router)
 from .intelligence import router as intelligence_router  # noqa: E402
 
 app.include_router(intelligence_router)
+
+from .pictures import router as pictures_router
+
+app.include_router(pictures_router)

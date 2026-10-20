@@ -13,7 +13,7 @@ Prefix `/api/v1`. JSON request/response; consistent errors `{code,message,detail
 - `GET/POST /courses/{id}/folders`, `PATCH/DELETE /folders/{folder_id}` (parent cycles prohibited)
 - `GET /courses/{id}/resources`, `POST /courses/{id}/resources` multipart, `GET/PATCH/DELETE /resources/{id}`, `POST /resources/{id}/reprocess`
 - `GET /resources/{id}/download` authenticated, `GET /resources/{id}/status` processing+errors
-- `GET /courses/{id}/search?q=...` across allowed documents, recordings, public forum and course voice answers; source snippet/citation+playback offsets, no private leakage.
+- `GET /courses/{id}/search?q=...` across allowed documents, recordings, public forum and course voice answers; grouped source links with physical page/playback offsets, no private leakage.
 
 ## Lectures and sessions
 - `GET/POST /courses/{id}/lectures`, `GET/PATCH /lectures/{id}`
@@ -48,4 +48,6 @@ Audio ingest path: `GET /ws/sessions/{sid}/audio` lecturer-only, receives PCM fr
 - Requests idempotent where feasible: `start` cannot create two live sessions for same lecture; `end` returns ended state if already ended; votes upsert per student; recording audio chunk index deduped; WS reconnect uses DB snapshot rather than replay assumption.
 - `preflight` may be slow: return structured error with timeout; client allows post after failed attempted retrieval. Never require AI success to participate.
 - Approval is via lecturer course membership and questions' actual visibility, not just user account role.
-- Course search / RAG results must label source type, title, text snippet, hyperlink, `start_ms/end_ms` if audio, and whether exact cited answer or broadly relevant material.
+- Course search and preflight return typed `matches` source groups with stable parent ID, kind, title, primary URL and deduplicated page/time `locations`. No internal chunk text/excerpts are exposed. The eight-result limit applies after grouping; preflight proof fields remain unchanged. See AI_WORKFLOW.md and the generated OpenAPI contract.
+
+Current course search is the all-keyword endpoint (`q`, 1–200 characters), with local English stemming and proximity qualification. Question and poll-note preflight keep hybrid natural-question retrieval. GET/POST/DELETE picture endpoints are `/auth/me/avatar`, `/courses/{cid}/banner` and `/lectures/{lid}/banner`, under `/api/v1`; own-account or course/lecturer permissions apply. See the implemented contract for normalized image limits and URLs.
