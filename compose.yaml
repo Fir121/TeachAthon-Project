@@ -1,0 +1,65 @@
+name: lectureloop
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+services:
+  db:
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_DB: lectureloop
+      POSTGRES_USER: lectureloop
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-local-development-change-before-deploy}
+    volumes: ["database:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lectureloop"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    logging: *default-logging
+    restart: unless-stopped
+  migrate:
+    build: {context: ., dockerfile: infra/Dockerfile.api}
+    env_file: [.env]
+    environment: &api-env
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://lectureloop:local-development-change-before-deploy@db:5432/lectureloop}
+      MEDIA_ROOT: /media
+    command: ["alembic", "upgrade", "head"]
+    depends_on: {db: {condition: service_healthy}}
+  api:
+    build: {context: ., dockerfile: infra/Dockerfile.api}
+    env_file: [.env]
+    environment: *api-env
+    volumes: ["media:/media"]
+    depends_on: {migrate: {condition: service_completed_successfully}}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/ready')"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    logging: *default-logging
+    restart: unless-stopped
+  worker:
+    build: {context: ., dockerfile: infra/Dockerfile.api}
+    env_file: [.env]
+    environment: *api-env
+    command: ["python", "-m", "app.worker"]
+    volumes: ["media:/media"]
+    depends_on: {migrate: {condition: service_completed_successfully}}
+    logging: *default-logging
+    restart: unless-stopped
+  proxy:
+    build: {context: ., dockerfile: infra/Dockerfile.web}
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:-:80}
+    ports: ["${HTTP_PORT:-8080}:80", "${HTTPS_PORT:-8443}:443"]
+    volumes: ["caddy_data:/data", "caddy_config:/config"]
+    depends_on: {api: {condition: service_healthy}}
+    logging: *default-logging
+    restart: unless-stopped
+volumes:
+  database:
+  media:
+  caddy_data:
+  caddy_config:

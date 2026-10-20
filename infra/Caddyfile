@@ -1,0 +1,21 @@
+{$SITE_ADDRESS:80} {
+    request_body {
+        max_size 105MB
+    }
+    header {
+        X-Content-Type-Options nosniff
+        Referrer-Policy same-origin
+        Content-Security-Policy "default-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; style-src 'self' 'unsafe-inline'; connect-src 'self' ws: wss:; frame-ancestors 'none'"
+    }
+    handle /api/* {
+        reverse_proxy api:8000
+    }
+    handle /ws/* {
+        reverse_proxy api:8000
+    }
+    handle {
+        root * /srv
+        try_files {path} /index.html
+        file_server
+    }
+}
