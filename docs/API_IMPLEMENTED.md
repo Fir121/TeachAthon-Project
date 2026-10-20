@@ -6,6 +6,8 @@ All course data requires active membership. Lecturer commands additionally check
 
 | Method | Route |
 | --- | --- |
+| GET | `/api/health` |
+| GET | `/api/ready` |
 | POST | `/api/v1/auth/register` |
 | POST | `/api/v1/auth/login` |
 | GET | `/api/v1/auth/me` |
@@ -38,6 +40,7 @@ All course data requires active membership. Lecturer commands additionally check
 | PATCH | `/api/v1/resources/{rid}` |
 | DELETE | `/api/v1/resources/{rid}` |
 | GET | `/api/v1/resources/{rid}/download` |
+| GET | `/api/v1/resources/{rid}/preview` |
 | GET | `/api/v1/resources/{rid}/pages/{index}` |
 | POST | `/api/v1/resources/{rid}/reprocess` |
 | POST | `/api/v1/courses/{cid}/lectures` |

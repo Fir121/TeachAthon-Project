@@ -125,3 +125,27 @@ def test_named_private_author_can_correct_or_delete_without_reading_private_thre
     assert t.get(f"/api/v1/questions/{q['id']}").json()["text"] == "Named private question corrected"
     assert o.patch(f"/api/v1/questions/{q['id']}", json={"text": "Not my question"}).status_code == 404
     assert s.delete(f"/api/v1/questions/{q['id']}").status_code == 204
+
+
+def test_stale_worker_event_counters_are_allocated_atomically_without_private_sequence_gaps(room):
+    from app.classroom import emit
+    from app.models import LiveSession
+
+    _, _, _, factory, _, _, sid, _ = room
+    with factory() as worker_db, factory() as live_db:
+        stale = worker_db.get(LiveSession, sid)
+        original = (stale.event_sequence, stale.public_sequence)
+        worker_db.commit()  # Simulate the assembly job's long external work.
+        current = live_db.scalar(select(LiveSession).where(LiveSession.id == sid).with_for_update())
+        emit(live_db, current, "question.created", audience="lecturer")
+        emit(live_db, current, "transcript.final")
+        live_db.commit()
+        # SQLAlchemy returns the cached instance even after SELECT FOR UPDATE.
+        locked = worker_db.scalar(select(LiveSession).where(LiveSession.id == sid).with_for_update())
+        assert locked is stale and locked.event_sequence == original[0]
+        event = emit(worker_db, locked, "recording.status", {"state": "ready"})
+        worker_db.commit()
+        assert event.sequence == original[0] + 3
+        assert event.public_sequence == original[1] + 2
+        rows = list(worker_db.scalars(select(SessionEvent).where(SessionEvent.session_id == sid)))
+        assert len({row.sequence for row in rows}) == len(rows)

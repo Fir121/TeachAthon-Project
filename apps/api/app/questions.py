@@ -112,7 +112,7 @@ def baseline_search(db, cid, text):
                         "page_number": i + 1,
                         "score": score,
                         "category": "relevant_material",
-                        "url": f"/api/v1/resources/{r.id}/download",
+                        "url": f"/resources/{r.id}?page={i + 1}",
                     }
                 )
     for q in db.scalars(

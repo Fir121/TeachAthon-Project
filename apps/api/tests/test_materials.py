@@ -31,6 +31,8 @@ def test_upload_conversion_folder_cycles_and_isolation(clients, tmp_path, monkey
     signup(s, "student", "s@example.com")
     cid = t.post("/api/v1/courses", json={"name": "Algorithms"}).json()["id"]
     folder = t.post(f"/api/v1/courses/{cid}/folders", json={"name": "Week 1"}).json()
+    duplicate = t.post(f"/api/v1/courses/{cid}/folders", json={"name": "week 1"})
+    assert duplicate.status_code == 409 and "different name" in duplicate.json()["message"]
     assert (
         t.patch(f"/api/v1/folders/{folder['id']}", json={"name": "Cycle", "parent_id": folder["id"]}).status_code == 409
     )
@@ -48,6 +50,12 @@ def test_upload_conversion_folder_cycles_and_isolation(clients, tmp_path, monkey
     assert r.status_code == 202, r.text
     rid = r.json()["id"]
     assert s.get(f"/api/v1/resources/{rid}/download").status_code == 404
+    assert s.get(f"/api/v1/resources/{rid}/preview").status_code == 404
+    preview = t.get(f"/api/v1/resources/{rid}/preview")
+    assert preview.status_code == 200 and preview.headers["content-type"] == "application/pdf"
+    assert preview.headers["content-disposition"].startswith("inline;")
+    assert preview.content == content
+    assert t.get(f"/api/v1/resources/{rid}/download").headers["content-disposition"].startswith("attachment;")
     assert (
         t.post(
             f"/api/v1/courses/{cid}/lectures", json={"title": "Before processing", "slide_resource_id": rid}
@@ -133,6 +141,9 @@ def test_actual_powerpoint_conversion_in_linux(clients, tmp_path, monkeypatch):
         resource = db.get(Resource, rid)
         assert resource.process_status == "ready" and len(resource.pages) == 1
         assert "Binary search" in resource.pages[0]["text"]
+    preview = t.get(f"/api/v1/resources/{rid}/preview")
+    assert preview.status_code == 200 and preview.content.startswith(b"%PDF")
+    assert preview.headers["content-disposition"].startswith("inline;")
 
 
 def test_index_status_uses_latest_job_not_backoff_schedule(clients):

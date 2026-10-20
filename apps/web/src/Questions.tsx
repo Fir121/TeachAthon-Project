@@ -12,17 +12,18 @@ import {
 } from "lucide-react";
 import { api, useAction, type User } from "./api";
 import { Failure } from "./CoursePage";
+import { Dialog, useDialog } from "./Dialog";
 export type Match = {
   source_id: string;
   source_type: string;
   question_id?: string;
-  page_number?: number;
+  page_number?: number | null;
   title: string;
   excerpt: string;
   url: string;
   category: string;
-  start_ms?: number;
-  end_ms?: number;
+  start_ms?: number | null;
+  end_ms?: number | null;
   score: number;
 };
 export type Preflight = {
@@ -56,41 +57,94 @@ export type Question = {
     possibly_addressed?: boolean;
   };
 };
+const sourceLabels: Record<string, string> = {
+  relevant_material: "Course material",
+  relevant_lecture_explanation: "Recorded lecture",
+  relevant_lecture_transcript: "Lecture transcript",
+  existing_lecturer_answer: "Lecturer answer",
+  relevant_public_discussion: "Public discussion",
+  similar_public_question: "Similar public question",
+};
+function SourceMatch({
+  match: m,
+  onVote,
+  voting,
+}: {
+  match: Match;
+  onVote: (id: string) => void;
+  voting: boolean;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  // Formatting only: retain source words, collapse PDF layout whitespace, render as plain text.
+  const excerpt = m.excerpt.replace(/\s+/g, " ").trim();
+  const shortened = excerpt.length > 420;
+  const visible =
+    expanded || !shortened
+      ? excerpt
+      : excerpt.slice(0, 420).replace(/\s+\S*$/, "") + "…";
+  const timed =
+    ["recording", "lecture_explanation"].includes(m.source_type) &&
+    typeof m.start_ms === "number" &&
+    Number.isFinite(m.start_ms);
+  const timestamp = (value: number) =>
+    `${Math.floor(value / 60000)}:${String(Math.floor(value / 1000) % 60).padStart(2, "0")}`;
+  return (
+    <article className="match-card">
+      <div className="source-meta">
+        <span>{sourceLabels[m.category] || "Course source"}</span>
+        {typeof m.page_number === "number" && <span>Page {m.page_number}</span>}
+        {timed && (
+          <span>
+            {timestamp(m.start_ms!)}
+            {typeof m.end_ms === "number" ? ` – ${timestamp(m.end_ms)}` : ""}
+          </span>
+        )}
+      </div>
+      <h3>{m.title}</h3>
+      <p className="excerpt-label">Source excerpt</p>
+      <blockquote className="source-excerpt">{visible}</blockquote>
+      <div className="source-actions">
+        <a
+          className="button secondary"
+          href={m.url}
+          target="_blank"
+          rel="noreferrer"
+        >
+          Open source ↗
+        </a>
+        {shortened && (
+          <button
+            className="text-button"
+            aria-expanded={expanded}
+            onClick={() => setExpanded(!expanded)}
+          >
+            {expanded ? "Show less" : "Read full excerpt"}
+          </button>
+        )}
+        {m.question_id && m.category === "similar_public_question" && (
+          <button
+            className="secondary"
+            disabled={voting}
+            onClick={() => onVote(m.question_id!)}
+          >
+            Upvote this existing question
+          </button>
+        )}
+      </div>
+    </article>
+  );
+}
 export function MatchCards({ matches }: { matches: Match[] }) {
   const vote = useAction((id: string) => api(`/questions/${id}/vote`, {}));
   return (
     <div className="match-list">
       {matches.map((m) => (
-        <article
-          className="match-card"
+        <SourceMatch
           key={m.source_type + m.source_id + String(m.start_ms)}
-        >
-          <span className="eyebrow">{m.category.replaceAll("_", " ")}</span>
-          <h3>
-            {m.title}
-            {m.page_number ? ` · page ${m.page_number}` : ""}
-          </h3>
-          <p>{m.excerpt}</p>
-          <a
-            className="text-button"
-            href={m.url}
-            target="_blank"
-            rel="noreferrer"
-          >
-            Open source ↗{" "}
-            {m.start_ms !== undefined &&
-              `· ${Math.floor(m.start_ms / 60000)}:${String(Math.floor(m.start_ms / 1000) % 60).padStart(2, "0")}`}
-          </a>
-          {m.question_id && m.category === "similar_public_question" && (
-            <button
-              className="secondary spaced"
-              disabled={vote.isPending}
-              onClick={() => vote.mutate(m.question_id!)}
-            >
-              Upvote this existing question
-            </button>
-          )}
-        </article>
+          match={m}
+          onVote={vote.mutate}
+          voting={vote.isPending}
+        />
       ))}
     </div>
   );
@@ -281,8 +335,8 @@ export function QuestionFeed({
 }) {
   const [receipt, setReceipt] = useState<Question | null>(null);
   const [params] = useSearchParams();
-  const [asking, setAsking] = useState(false),
-    [sort, setSort] = useState("newest"),
+  const dialog = useDialog();
+  const [sort, setSort] = useState("newest"),
     [search, setSearch] = useState(""),
     [open, setOpen] = useState<string | null>(params.get("question"));
   const q = useQuery({
@@ -306,13 +360,16 @@ export function QuestionFeed({
               : "Good questions belong here."}
           </p>
         </div>
-        <button className="primary" onClick={() => setAsking(!asking)}>
+        <button
+          className="primary"
+          onClick={(e) => dialog.open("ask-question", e.currentTarget)}
+        >
           <MessageCircle size={16} />
           Ask a question
         </button>
       </div>
-      {asking && (
-        <div className="spaced">
+      {dialog.active === "ask-question" && (
+        <Dialog title="Ask a question" onClose={dialog.close}>
           <AskFlow
             courseId={courseId}
             sessionId={sessionId}
@@ -320,9 +377,9 @@ export function QuestionFeed({
               if (question.visibility === "private" && !question.anonymous)
                 setReceipt(question);
             }}
-            onClose={() => setAsking(false)}
+            onClose={dialog.close}
           />
-        </div>
+        </Dialog>
       )}
       {!sessionId && (
         <div className="feed-filters">

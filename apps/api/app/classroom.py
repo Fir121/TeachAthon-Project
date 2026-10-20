@@ -5,7 +5,8 @@ from threading import Lock
 from datetime import timezone
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field
-from sqlalchemy import select, func
+from sqlalchemy import select, func, update
+from sqlalchemy.orm.attributes import set_committed_value
 from .config import settings
 from .db import SessionLocal
 from .models import LiveSession, Lecture, Resource, Course, SessionEvent, Poll, PollVote, Job, now
@@ -43,10 +44,20 @@ def live(db, sid, user, teacher=False, active=False, lock=False):
 
 
 def emit(db, session, kind, payload=None, audience="course", at_ms=None):
-    # All writers lock the parent session. Separate public sequence avoids revealing private activity counts.
-    session.event_sequence += 1
-    if audience == "course":
-        session.public_sequence += 1
+    # Allocate in the database: a locked ORM instance can still hold stale counters
+    # after background work when expire_on_commit=False.
+    sequence, public_sequence = db.execute(
+        update(LiveSession)
+        .where(LiveSession.id == session.id)
+        .values(
+            event_sequence=LiveSession.event_sequence + 1,
+            public_sequence=LiveSession.public_sequence + (1 if audience == "course" else 0),
+        )
+        .returning(LiveSession.event_sequence, LiveSession.public_sequence),
+        execution_options={"synchronize_session": False},
+    ).one()
+    set_committed_value(session, "event_sequence", sequence)
+    set_committed_value(session, "public_sequence", public_sequence)
     event = SessionEvent(
         session_id=session.id,
         sequence=session.event_sequence,

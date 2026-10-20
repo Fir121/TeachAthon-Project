@@ -33,3 +33,5 @@ Open **http://localhost:8080**. Register a lecturer, create a course, upload a P
 Set `OPENAI_API_KEY` in private `.env` and recreate API/worker for real captions, semantic search and topic intelligence. All AI adapters are server-side; questions and manual polls work during provider failure. Generated answers are OFF by default.
 
 See [deployment, checks and backups](docs/DEPLOYMENT.md) and [actual milestone evidence](docs/PROGRESS.md). API contract: http://localhost:8080/api/openapi.json . The implementation currently targets local Compose; the owner deferred VM deployment until a VM is ready.
+
+AI implementation and owner review spaces: [AI workflow review](docs/AI_WORKFLOW_REVIEW.md), including PDF extraction/indexing/display, provider inputs, storage, privacy, automatic decisions and known limitations.

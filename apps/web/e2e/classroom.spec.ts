@@ -33,6 +33,21 @@ test("lecturer and mobile student share slides, polls and private-safe questions
       .click();
     await expect(page.getByRole("heading", { name: /Hello/ })).toBeVisible();
   }
+  await expect(
+    t.getByRole("heading", { name: "Discover courses" }),
+  ).toHaveCount(0);
+  await t.getByRole("button", { name: "Create course" }).click();
+  await expect(
+    t.getByRole("dialog", { name: "Create a course" }),
+  ).toBeVisible();
+  await t.goBack();
+  await expect(t.getByRole("dialog")).toHaveCount(0);
+  await t.goForward();
+  await expect(
+    t.getByRole("dialog", { name: "Create a course" }),
+  ).toBeVisible();
+  await t.keyboard.press("Escape");
+  await expect(t.getByRole("dialog")).toHaveCount(0);
   await t.getByRole("button", { name: "Create course" }).click();
   await t.getByLabel("Course name").fill(`Browser course ${suffix}`);
   await t
@@ -153,213 +168,230 @@ test("real browser microphone chunks assemble to seekable protected recording", 
     viewport: { width: 360, height: 780 },
     isMobile: true,
   });
-  await learner.request.post("/api/v1/auth/register", {
-    data: {
-      name: "Caption learner",
-      email: `caption-${suffix}@example.com`,
-      password: "caption-test-password",
-      role: "student",
-    },
-  });
-  await context.request.post(`/api/v1/courses/${cid}/members`, {
-    data: { email: `caption-${suffix}@example.com` },
-  });
-  const learnerPage = await learner.newPage();
-  const fs = await import("node:fs/promises");
-  const resource = (
-    await (
-      await context.request.post(`/api/v1/courses/${cid}/resources`, {
-        multipart: {
-          file: {
-            name: "deck.pdf",
-            mimeType: "application/pdf",
-            buffer: await fs.readFile(path.resolve("e2e/deck.pdf")),
-          },
-        },
-      })
-    ).json()
-  ).id;
-  await expect
-    .poll(
-      async () =>
-        (
-          await (
-            await context.request.get(`/api/v1/resources/${resource}`)
-          ).json()
-        ).process_status,
-    )
-    .toBe("ready");
-  const lid = (
-    await (
-      await context.request.post(`/api/v1/courses/${cid}/lectures`, {
-        data: { title: "Recording browser test", slide_resource_id: resource },
-      })
-    ).json()
-  ).id;
-  await page.goto(`/lectures/${lid}`);
-  await page.getByLabel("Record microphone audio for course replay").check();
-  await page
-    .getByRole("button", { name: "Start lecture", exact: true })
-    .click();
-  await page.waitForURL("**/sessions/*");
-  const sid = page.url().split("/sessions/")[1];
-  await learnerPage.goto(`/sessions/${sid}`);
-  await learnerPage.getByLabel("Show live captions").check();
-  let privateQuestion: string | undefined;
-  if (process.env.LIVE_AUDIO_FIXTURE) {
-    const question = {
-      text: "Why is binary search logarithmic?",
-      visibility: "private",
-      anonymous: true,
-      session_id: sid,
-    };
-    const proof = await (
-      await learner.request.post(`/api/v1/courses/${cid}/questions/preflight`, {
-        data: question,
-      })
-    ).json();
-    privateQuestion = (
+  try {
+    await learner.request.post("/api/v1/auth/register", {
+      data: {
+        name: "Caption learner",
+        email: `caption-${suffix}@example.com`,
+        password: "caption-test-password",
+        role: "student",
+      },
+    });
+    await context.request.post(`/api/v1/courses/${cid}/members`, {
+      data: { email: `caption-${suffix}@example.com` },
+    });
+    const learnerPage = await learner.newPage();
+    const fs = await import("node:fs/promises");
+    const resource = (
       await (
-        await learner.request.post(`/api/v1/courses/${cid}/questions`, {
-          data: { ...question, preflight_token: proof.preflight_token },
+        await context.request.post(`/api/v1/courses/${cid}/resources`, {
+          multipart: {
+            file: {
+              name: "deck.pdf",
+              mimeType: "application/pdf",
+              buffer: await fs.readFile(path.resolve("e2e/deck.pdf")),
+            },
+          },
         })
       ).json()
     ).id;
-    expect(
-      (
-        await context.request.post(
-          `/api/v1/questions/${privateQuestion}/resolve`,
-        )
-      ).status(),
-    ).toBe(200);
-    expect(
-      (
-        await (
-          await context.request.get(`/api/v1/questions/${privateQuestion}`)
-        ).json()
-      ).state,
-    ).toBe("answered");
-  }
-  await page
-    .getByRole("button", { name: "Start microphone", exact: true })
-    .click();
-  await expect(
-    page.getByRole("button", { name: "Pause microphone", exact: true }),
-  ).toBeVisible();
-  await expect
-    .poll(
-      async () =>
-        (
-          await (
-            await context.request.get(
-              `/api/v1/sessions/${sid}/processing-status`,
-            )
-          ).json()
-        ).recording_state,
-      { timeout: 12000 },
-    )
-    .toBe("capturing");
-  if (process.env.LIVE_AUDIO_FIXTURE) {
-    await expect(learnerPage.locator(".captions")).toContainText(
-      /binary|search/i,
-      { timeout: 20000 },
-    );
     await expect
       .poll(
-        async () => {
-          const transcript = await (
-            await learner.request.get(`/api/v1/sessions/${sid}/transcript`)
-          ).json();
-          return transcript.some((segment: any) =>
-            /binary|search/i.test(segment.text),
-          );
-        },
-        { timeout: 20000 },
+        async () =>
+          (
+            await (
+              await context.request.get(`/api/v1/resources/${resource}`)
+            ).json()
+          ).process_status,
       )
-      .toBe(true);
-  }
-  await page.getByRole("button", { name: "Next slide" }).click();
-  await expect(page.getByText("Slide 2 / 2")).toBeVisible();
-  await page
-    .getByRole("button", { name: "Pause microphone", exact: true })
-    .click();
-  await expect(
-    page.getByText("Microphone paused · audio uploads saved"),
-  ).toBeVisible();
-  await page.getByRole("button", { name: "End lecture", exact: true }).click();
-  await page
-    .getByRole("button", { name: "End lecture now", exact: true })
-    .click();
-  await page.getByRole("link", { name: "Open lecture archive" }).click();
-  await expect(page.locator("audio")).toBeVisible({ timeout: 20000 });
-  const media = await context.request.get(`/api/v1/sessions/${sid}/recording`, {
-    headers: { Range: "bytes=0-99" },
-  });
-  expect(media.status()).toBe(206);
-  const timeline = await (
-    await context.request.get(`/api/v1/sessions/${sid}/timeline`)
-  ).json();
-  const transition = timeline.find(
-    (e: any) => e.type === "slide.changed" && e.payload.index === 1,
-  );
-  await page.locator("audio").evaluate(async (audio: HTMLAudioElement) => {
-    await audio.play();
-  });
-  await expect
-    .poll(() =>
-      page.locator("audio").evaluate((a: HTMLAudioElement) => a.currentTime),
-    )
-    .toBeGreaterThan(0);
-  await page.locator("audio").evaluate((a: HTMLAudioElement) => a.pause());
-  await page.locator("audio").evaluate((a: HTMLAudioElement) => {
-    a.currentTime = 0;
-  });
-  await expect(page.getByAltText("Lecture slide 1")).toBeVisible();
-  await page.locator("audio").evaluate((a: HTMLAudioElement, ms: number) => {
-    a.currentTime = ms / 1000;
-  }, transition.offset_ms);
-  await expect(page.getByAltText("Lecture slide 2")).toBeVisible();
-  if (process.env.LIVE_AUDIO_FIXTURE) {
+      .toBe("ready");
+    const lid = (
+      await (
+        await context.request.post(`/api/v1/courses/${cid}/lectures`, {
+          data: {
+            title: "Recording browser test",
+            slide_resource_id: resource,
+          },
+        })
+      ).json()
+    ).id;
+    await page.goto(`/lectures/${lid}`);
+    await page.getByLabel("Record microphone audio for course replay").check();
+    await page
+      .getByRole("button", { name: "Start lecture", exact: true })
+      .click();
+    await page.waitForURL("**/sessions/*");
+    const sid = page.url().split("/sessions/")[1];
+    await learnerPage.goto(`/sessions/${sid}`);
+    await learnerPage.getByLabel("Show live captions").check();
+    let privateQuestion: string | undefined;
+    if (process.env.LIVE_AUDIO_FIXTURE) {
+      const question = {
+        text: "Why is binary search logarithmic?",
+        visibility: "private",
+        anonymous: true,
+        session_id: sid,
+      };
+      const proof = await (
+        await learner.request.post(
+          `/api/v1/courses/${cid}/questions/preflight`,
+          {
+            data: question,
+          },
+        )
+      ).json();
+      privateQuestion = (
+        await (
+          await learner.request.post(`/api/v1/courses/${cid}/questions`, {
+            data: { ...question, preflight_token: proof.preflight_token },
+          })
+        ).json()
+      ).id;
+      expect(
+        (
+          await context.request.post(
+            `/api/v1/questions/${privateQuestion}/resolve`,
+          )
+        ).status(),
+      ).toBe(200);
+      expect(
+        (
+          await (
+            await context.request.get(`/api/v1/questions/${privateQuestion}`)
+          ).json()
+        ).state,
+      ).toBe("answered");
+    }
+    await page
+      .getByRole("button", { name: "Start microphone", exact: true })
+      .click();
+    await expect(
+      page.getByRole("button", { name: "Pause microphone", exact: true }),
+    ).toBeVisible();
     await expect
       .poll(
         async () =>
           (
             await (
               await context.request.get(
-                `/api/v1/questions/${privateQuestion}/match-status`,
+                `/api/v1/sessions/${sid}/processing-status`,
               )
             ).json()
-          ).state,
-        { timeout: 25000 },
+          ).recording_state,
+        { timeout: 12000 },
       )
-      .toBe("ready");
-    expect(
-      (
-        await learner.request.get(`/api/v1/questions/${privateQuestion}`)
-      ).status(),
-    ).toBe(404);
-    await expect(page.locator(".transcript-panel")).toContainText(
-      /binary|search/i,
+      .toBe("capturing");
+    if (process.env.LIVE_AUDIO_FIXTURE) {
+      await expect(learnerPage.locator(".captions")).toContainText(
+        /binary|search/i,
+        { timeout: 20000 },
+      );
+      await expect
+        .poll(
+          async () => {
+            const transcript = await (
+              await learner.request.get(`/api/v1/sessions/${sid}/transcript`)
+            ).json();
+            return transcript.some((segment: any) =>
+              /binary|search/i.test(segment.text),
+            );
+          },
+          { timeout: 20000 },
+        )
+        .toBe(true);
+    }
+    await page.getByRole("button", { name: "Next slide" }).click();
+    await expect(page.getByText("Slide 2 / 2")).toBeVisible();
+    await page
+      .getByRole("button", { name: "Pause microphone", exact: true })
+      .click();
+    await expect(
+      page.getByText("Microphone paused · audio uploads saved"),
+    ).toBeVisible();
+    await page
+      .getByRole("button", { name: "End lecture", exact: true })
+      .click();
+    await page
+      .getByRole("button", { name: "End lecture now", exact: true })
+      .click();
+    await page.getByRole("link", { name: "Open lecture archive" }).click();
+    await expect(page.locator("audio")).toBeVisible({ timeout: 20000 });
+    const media = await context.request.get(
+      `/api/v1/sessions/${sid}/recording`,
+      {
+        headers: { Range: "bytes=0-99" },
+      },
     );
+    expect(media.status()).toBe(206);
+    const timeline = await (
+      await context.request.get(`/api/v1/sessions/${sid}/timeline`)
+    ).json();
+    const transition = timeline.find(
+      (e: any) => e.type === "slide.changed" && e.payload.index === 1,
+    );
+    await page.locator("audio").evaluate(async (audio: HTMLAudioElement) => {
+      await audio.play();
+    });
     await expect
-      .poll(
-        async () => {
-          const result = await (
-            await learner.request.get(
-              `/api/v1/courses/${cid}/search?q=binary%20search%20sorted%20interval`,
-            )
-          ).json();
-          return result.matches?.some(
-            (match: any) => match.source_type === "lecture_explanation",
-          );
-        },
-        { timeout: 30000 },
+      .poll(() =>
+        page.locator("audio").evaluate((a: HTMLAudioElement) => a.currentTime),
       )
-      .toBe(true);
+      .toBeGreaterThan(0);
+    await page.locator("audio").evaluate((a: HTMLAudioElement) => a.pause());
+    await page.locator("audio").evaluate((a: HTMLAudioElement) => {
+      a.currentTime = 0;
+    });
+    await expect(page.getByAltText("Lecture slide 1")).toBeVisible();
+    await page.locator("audio").evaluate((a: HTMLAudioElement, ms: number) => {
+      a.currentTime = ms / 1000;
+    }, transition.offset_ms);
+    await expect(page.getByAltText("Lecture slide 2")).toBeVisible();
+    if (process.env.LIVE_AUDIO_FIXTURE) {
+      await expect
+        .poll(
+          async () =>
+            (
+              await (
+                await context.request.get(
+                  `/api/v1/questions/${privateQuestion}/match-status`,
+                )
+              ).json()
+            ).state,
+          { timeout: 25000 },
+        )
+        .toBe("ready");
+      expect(
+        (
+          await learner.request.get(`/api/v1/questions/${privateQuestion}`)
+        ).status(),
+      ).toBe(404);
+      await expect(page.locator(".transcript-panel")).toContainText(
+        /binary|search/i,
+      );
+      await expect
+        .poll(
+          async () => {
+            const result = await (
+              await learner.request.get(
+                `/api/v1/courses/${cid}/search?q=binary%20search%20sorted%20interval`,
+              )
+            ).json();
+            return result.matches?.some(
+              (match: any) => match.source_type === "lecture_explanation",
+            );
+          },
+          { timeout: 30000 },
+        )
+        .toBe(true);
+    }
+  } finally {
+    try {
+      expect(
+        (await context.request.delete(`/api/v1/courses/${cid}`)).status(),
+      ).toBe(204);
+    } finally {
+      await learner.close();
+      await context.close();
+    }
   }
-  expect(
-    (await context.request.delete(`/api/v1/courses/${cid}`)).status(),
-  ).toBe(204);
-  await learner.close();
-  await context.close();
 });

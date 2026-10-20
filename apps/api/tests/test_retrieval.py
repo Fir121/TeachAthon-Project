@@ -52,6 +52,9 @@ def test_retrieval_filters_private_disabled_crosscourse_and_irrelevant(room):
         db.commit()
     result = s.get(f"/api/v1/courses/{cid}/search", params={"q": "binary search sorted interval"}).json()
     assert any(m["source_type"] == "lecture_explanation" and m["start_ms"] == 1000 for m in result["matches"])
+    document = next(m for m in result["matches"] if m["source_type"] == "resource")
+    assert document["url"].startswith("/resources/") and document["url"].endswith("?page=1")
+    assert document["start_ms"] is None
     assert all("PRIVATE" not in m["title"] for m in result["matches"])
     assert (
         s.get(f"/api/v1/courses/{cid}/search", params={"q": "photosynthesis chloroplast sunlight"}).json()["matches"]

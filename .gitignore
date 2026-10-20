@@ -14,3 +14,6 @@ test-results/
 backups/
 .vscode
 .ruff_cache.ruff_cache/
+
+# Generated PDF.js rendering assets (copied from the installed package).
+apps/web/public/pdfjs/

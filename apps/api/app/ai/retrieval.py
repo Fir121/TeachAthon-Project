@@ -173,7 +173,9 @@ def citation(chunk, score):
         url = f"/recordings/{chunk.session_id}?t={chunk.start_ms or 0}"
         category = "relevant_lecture_explanation"
     elif chunk.resource_id:
-        url = f"/api/v1/resources/{chunk.resource_id}/download"
+        url = f"/resources/{chunk.resource_id}"
+        if chunk.page_number is not None:
+            url += f"?page={chunk.page_number}"
         if chunk.start_ms is not None:
             url = f"/resources/{chunk.resource_id}?t={chunk.start_ms}"
         category = "relevant_material"

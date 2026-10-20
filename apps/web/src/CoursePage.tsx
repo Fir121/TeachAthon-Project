@@ -17,9 +17,16 @@ import {
   ArrowRight,
   Trash2,
 } from "lucide-react";
-import { api, useAction, type Course, type CourseSettings } from "./api";
+import {
+  api,
+  useAction,
+  type Course,
+  type CourseSettings,
+  type User,
+} from "./api";
 import { QuestionFeed } from "./Questions";
 import Search from "./Search";
+import { Dialog, FormActions, useDialog } from "./Dialog";
 export type Resource = {
   id: string;
   folder_id: string | null;
@@ -70,6 +77,10 @@ export default function CoursePage() {
     queryFn: () => api<Course[]>("/courses/discover"),
     enabled: !!query.error,
   });
+  const me = useQuery({
+    queryKey: ["me"],
+    queryFn: () => api<User>("/auth/me"),
+  });
   const join = useAction(() => api(`/courses/${id}/join-requests`, {}));
   if (query.isPending) return <p role="status">Loading course…</p>;
   if (query.error) {
@@ -86,15 +97,22 @@ export default function CoursePage() {
             <p className="muted spaced">
               Course content is available to enrolled members.
             </p>
-            <button
-              className="primary spaced"
-              disabled={join.isPending || c.membership_status === "pending"}
-              onClick={() => join.mutate()}
-            >
-              {c.membership_status === "pending"
-                ? "Request pending"
-                : "Request to join"}
-            </button>
+            {me.data?.role === "student" ? (
+              <button
+                className="primary spaced"
+                disabled={join.isPending || c.membership_status === "pending"}
+                onClick={() => join.mutate()}
+              >
+                {c.membership_status === "pending"
+                  ? "Request pending"
+                  : "Request to join"}
+              </button>
+            ) : (
+              <p className="muted spaced">
+                Ask a course lecturer for a lecturer invitation to teach in this
+                course.
+              </p>
+            )}
             <Failure error={join.error} />
           </section>
         ) : (
@@ -187,11 +205,10 @@ function Overview() {
   );
 }
 function Resources() {
-  const { id, teacher } = useCourse(),
-    [folder, setFolder] = useState<string | null>(null),
-    [addFolder, setAddFolder] = useState(false),
-    [preview, setPreview] = useState<Resource | null>(null),
-    [page, setPage] = useState(0);
+  const { id, teacher } = useCourse();
+  const dialog = useDialog();
+  const [folder, setFolder] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const resources = useQuery({
     queryKey: ["resources", id],
     queryFn: () => api<Resource[]>(`/courses/${id}/resources`),
@@ -215,15 +232,8 @@ function Resources() {
     api(`/courses/${id}/folders`, { name, parent_id: folder }),
   );
   const editFolder = useAction(
-    ({
-      fid,
-      name,
-      parent_id,
-    }: {
-      fid: string;
-      name: string;
-      parent_id: string | null;
-    }) => api(`/folders/${fid}`, { name, parent_id }, "PATCH"),
+    (data: { fid: string; name: string; parent_id: string | null }) =>
+      api(`/folders/${data.fid}`, data, "PATCH"),
   );
   const deleteFolder = useAction((fid: string) =>
     api(`/folders/${fid}`, undefined, "DELETE"),
@@ -249,65 +259,64 @@ function Resources() {
     ),
   );
   const current = folders.data?.find((f) => f.id === folder);
-  function uploadDrop(e: React.DragEvent) {
-    e.preventDefault();
-    if (teacher) upload.mutate(Array.from(e.dataTransfer.files));
+  const editingFolder = folders.data?.find(
+    (f) => dialog.active === `folder:${f.id}`,
+  );
+  const managing = resources.data?.find(
+    (r) => dialog.active === `resource:${r.id}`,
+  );
+  const busy =
+    edit.isPending || retry.isPending || reindex.isPending || remove.isPending;
+  function open(name: string, trigger: HTMLElement) {
+    setConfirmDelete(false);
+    edit.reset();
+    remove.reset();
+    retry.reset();
+    reindex.reset();
+    editFolder.reset();
+    deleteFolder.reset();
+    createFolder.reset();
+    dialog.open(name, trigger);
   }
   return (
     <>
-      <div className="row-between">
+      <div className="row-between section-heading">
         <div>
           <h2>Course resources</h2>
-          <p className="muted small">A shared library for your learning.</p>
+          <p className="muted small">
+            Your course library, ready to explore and teach from.
+          </p>
         </div>
         {teacher && (
           <button
             className="secondary"
-            onClick={() => setAddFolder(!addFolder)}
+            onClick={(e) => open("create-folder", e.currentTarget)}
           >
             <Plus size={16} />
             New folder
           </button>
         )}
       </div>
-      <div className="breadcrumbs">
+      <nav className="breadcrumbs" aria-label="Resource folders">
         <button onClick={() => setFolder(null)}>All resources</button>
         {current && (
           <>
-            {" "}
-            /{" "}
+            <span>/</span>
             <button onClick={() => setFolder(current.parent_id)}>
               Parent folder
-            </button>{" "}
-            / {current.name}
+            </button>
+            <span>/ {current.name}</span>
           </>
         )}
-      </div>
-      {addFolder && (
-        <form
-          className="panel inline-form"
-          onSubmit={(e) => {
-            e.preventDefault();
-            createFolder.mutate(
-              String(new FormData(e.currentTarget).get("name")),
-              { onSuccess: () => setAddFolder(false) },
-            );
-          }}
-        >
-          <label>
-            Folder name
-            <input name="name" required />
-          </label>
-          <button className="primary" disabled={createFolder.isPending}>
-            Create folder
-          </button>
-        </form>
-      )}
+      </nav>
       {teacher && (
         <label
           className="dropzone"
           onDragOver={(e) => e.preventDefault()}
-          onDrop={uploadDrop}
+          onDrop={(e) => {
+            e.preventDefault();
+            upload.mutate(Array.from(e.dataTransfer.files));
+          }}
         >
           <Upload size={25} />
           <strong>
@@ -332,56 +341,27 @@ function Resources() {
         </label>
       )}
       <Failure error={upload.error || resources.error || folders.error} />
+      {resources.isPending && (
+        <p className="muted spaced" role="status">
+          Loading resources…
+        </p>
+      )}
       <div className="resource-list">
         {folders.data
           ?.filter((f) => f.parent_id === folder)
           .map((f) => (
-            <div className="resource-row" key={f.id}>
+            <div className="resource-row folder-row" key={f.id}>
               <button className="folder-link" onClick={() => setFolder(f.id)}>
                 <FolderIcon size={22} />
-                {f.name}
+                <span>{f.name}</span>
               </button>
               {teacher && (
-                <details>
-                  <summary>Edit folder</summary>
-                  <form
-                    onSubmit={(e) => {
-                      e.preventDefault();
-                      const d = new FormData(e.currentTarget);
-                      editFolder.mutate({
-                        fid: f.id,
-                        name: String(d.get("name")),
-                        parent_id: String(d.get("parent")) || null,
-                      });
-                    }}
-                  >
-                    <label>
-                      Name
-                      <input name="name" defaultValue={f.name} required />
-                    </label>
-                    <label>
-                      Parent
-                      <select name="parent" defaultValue={f.parent_id || ""}>
-                        <option value="">Root</option>
-                        {folders.data
-                          ?.filter((p) => p.id !== f.id)
-                          .map((p) => (
-                            <option key={p.id} value={p.id}>
-                              {p.name}
-                            </option>
-                          ))}
-                      </select>
-                    </label>
-                    <button className="secondary">Save</button>
-                    <button
-                      type="button"
-                      className="danger"
-                      onClick={() => deleteFolder.mutate(f.id)}
-                    >
-                      Delete empty folder
-                    </button>
-                  </form>
-                </details>
+                <button
+                  className="secondary"
+                  onClick={(e) => open(`folder:${f.id}`, e.currentTarget)}
+                >
+                  Edit folder
+                </button>
               )}
             </div>
           ))}
@@ -389,20 +369,28 @@ function Resources() {
           ?.filter((r) => r.folder_id === folder)
           .map((r) => (
             <article className="resource-row" key={r.id}>
-              <FileText size={23} />
+              <span className="resource-icon">
+                <FileText size={23} />
+              </span>
               <div className="grow">
-                <h3>{r.original_filename}</h3>
-                <span className="muted small">
-                  {r.kind.toUpperCase()} · {(r.size_bytes / 1024).toFixed(0)} KB{" "}
-                  {r.page_count > 0 && `· ${r.page_count} pages`}
-                </span>
-                <div>
+                <h3>
+                  <Link to={`/resources/${r.id}`}>{r.original_filename}</Link>
+                </h3>
+                <p className="muted small">
+                  {r.kind.toUpperCase()} · {(r.size_bytes / 1024).toFixed(0)} KB
+                  {r.page_count > 0 && ["pdf", "pptx", "docx"].includes(r.kind)
+                    ? ` · ${r.page_count} pages`
+                    : ""}
+                </p>
+                <div className="resource-status">
                   <Status status={r.process_status} />
                   {r.indexing_enabled && r.process_status === "ready" && (
                     <span className="small muted">
-                      {" "}
-                      · search index: {r.index_status}
+                      Search: {r.index_status}
                     </span>
+                  )}
+                  {!r.indexing_enabled && (
+                    <span className="small muted">Excluded from search</span>
                   )}
                 </div>
                 {teacher && r.index_error && (
@@ -411,162 +399,267 @@ function Resources() {
                 {r.error_message && <p className="error">{r.error_message}</p>}
               </div>
               <div className="resource-actions">
-                {["audio", "video"].includes(r.kind) && (
-                  <Link className="button secondary" to={`/resources/${r.id}`}>
-                    Play source
-                  </Link>
-                )}
-                {r.page_count > 0 &&
-                  ["pdf", "pptx", "docx"].includes(r.kind) && (
-                    <button
-                      className="secondary"
-                      onClick={() => {
-                        setPreview(r);
-                        setPage(0);
-                      }}
-                    >
-                      Preview
-                    </button>
-                  )}
-                <a
-                  className="button secondary"
-                  href={`/api/v1/resources/${r.id}/download`}
-                >
-                  Download
-                </a>
+                <Link className="button secondary" to={`/resources/${r.id}`}>
+                  {["audio", "video"].includes(r.kind) ? "Play source" : "Open"}
+                </Link>
                 {teacher && (
-                  <details>
-                    <summary>Manage</summary>
-                    <form
-                      onSubmit={(e) => {
-                        e.preventDefault();
-                        const d = new FormData(e.currentTarget);
-                        edit.mutate({
-                          ...r,
-                          original_filename: String(d.get("name")),
-                          folder_id: String(d.get("folder")) || null,
-                          indexing_enabled: d.has("indexed"),
-                        });
-                      }}
-                    >
-                      <label>
-                        Name
-                        <input
-                          name="name"
-                          defaultValue={r.original_filename}
-                          required
-                        />
-                      </label>
-                      <label>
-                        Folder
-                        <select name="folder" defaultValue={r.folder_id || ""}>
-                          <option value="">Root</option>
-                          {folders.data?.map((f) => (
-                            <option key={f.id} value={f.id}>
-                              {f.name}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      <label className="check">
-                        <input
-                          type="checkbox"
-                          name="indexed"
-                          defaultChecked={r.indexing_enabled}
-                        />
-                        Include in course search
-                      </label>
-                      <button className="secondary" disabled={edit.isPending}>
-                        Save
-                      </button>
-                      {r.process_status === "failed" && (
-                        <button
-                          type="button"
-                          className="secondary"
-                          onClick={() => retry.mutate(r.id)}
-                        >
-                          Retry processing
-                        </button>
-                      )}
-                      <button
-                        type="button"
-                        className="secondary"
-                        disabled={reindex.isPending}
-                        onClick={() => reindex.mutate(r.id)}
-                      >
-                        Retry search indexing
-                      </button>
-                      <button
-                        className="danger"
-                        type="button"
-                        onClick={() => remove.mutate(r.id)}
-                      >
-                        <Trash2 size={15} />
-                        Delete resource
-                      </button>
-                    </form>
-                  </details>
+                  <button
+                    className="secondary"
+                    aria-label={`Manage ${r.original_filename}`}
+                    onClick={(e) => open(`resource:${r.id}`, e.currentTarget)}
+                  >
+                    Manage
+                  </button>
                 )}
               </div>
             </article>
           ))}
       </div>
-      {resources.data?.length === 0 && (
-        <div className="empty panel">
-          <FileText />
-          <p>
-            No resources yet. Uploaded files will appear here with their
-            processing status.
-          </p>
-        </div>
-      )}
-      {preview && (
-        <div
-          className="modal"
-          role="dialog"
-          aria-modal="true"
-          aria-label="Resource preview"
+      {resources.data &&
+        !resources.data.some((r) => r.folder_id === folder) &&
+        !folders.data?.some((f) => f.parent_id === folder) && (
+          <div className="empty panel">
+            <FileText />
+            <p>
+              {teacher
+                ? "This folder is empty. Upload files or create a folder to get started."
+                : "There are no resources in this folder yet."}
+            </p>
+          </div>
+        )}
+      {teacher && dialog.active === "create-folder" && (
+        <Dialog
+          title="New folder"
+          description={`Create a folder in ${current?.name || "All resources"}.`}
+          onClose={dialog.close}
         >
-          <section className="panel">
-            <div className="row-between">
-              <h2>{preview.original_filename}</h2>
-              <button className="secondary" onClick={() => setPreview(null)}>
-                Close
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              createFolder.mutate(
+                String(new FormData(e.currentTarget).get("name")),
+                { onSuccess: dialog.close },
+              );
+            }}
+          >
+            <label>
+              Folder name
+              <input autoFocus name="name" required maxLength={100} />
+            </label>
+            <Failure error={createFolder.error} />
+            <FormActions onCancel={dialog.close}>
+              <button className="primary" disabled={createFolder.isPending}>
+                {createFolder.isPending ? "Creating…" : "Create folder"}
+              </button>
+            </FormActions>
+          </form>
+        </Dialog>
+      )}
+      {teacher && editingFolder && (
+        <Dialog title="Edit folder" onClose={dialog.close}>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              const d = new FormData(e.currentTarget);
+              editFolder.mutate(
+                {
+                  fid: editingFolder.id,
+                  name: String(d.get("name")),
+                  parent_id: String(d.get("parent")) || null,
+                },
+                { onSuccess: dialog.close },
+              );
+            }}
+          >
+            <label>
+              Name
+              <input
+                autoFocus
+                name="name"
+                defaultValue={editingFolder.name}
+                required
+              />
+            </label>
+            <label>
+              Parent folder
+              <select
+                name="parent"
+                defaultValue={editingFolder.parent_id || ""}
+              >
+                <option value="">All resources</option>
+                {folders.data
+                  ?.filter((f) => f.id !== editingFolder.id)
+                  .map((f) => (
+                    <option key={f.id} value={f.id}>
+                      {f.name}
+                    </option>
+                  ))}
+              </select>
+            </label>
+            <Failure error={editFolder.error || deleteFolder.error} />
+            <FormActions onCancel={dialog.close}>
+              <button
+                className="primary"
+                disabled={editFolder.isPending || deleteFolder.isPending}
+              >
+                Save changes
+              </button>
+            </FormActions>
+            <div className="dialog-section">
+              <p className="muted small">
+                Only empty folders can be deleted. Files in other folders are
+                unaffected.
+              </p>
+              <button
+                type="button"
+                className="danger"
+                disabled={deleteFolder.isPending}
+                onClick={() =>
+                  deleteFolder.mutate(editingFolder.id, {
+                    onSuccess: dialog.close,
+                  })
+                }
+              >
+                Delete empty folder
               </button>
             </div>
-            <img
-              className="slide"
-              alt={`Page ${page + 1}`}
-              src={`/api/v1/resources/${preview.id}/pages/${page}`}
+          </form>
+        </Dialog>
+      )}
+      {teacher && managing && (
+        <Dialog
+          title="Manage resource"
+          description={managing.original_filename}
+          onClose={dialog.close}
+        >
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              const d = new FormData(e.currentTarget);
+              edit.mutate(
+                {
+                  ...managing,
+                  original_filename: String(d.get("name")),
+                  folder_id: String(d.get("folder")) || null,
+                  indexing_enabled: d.has("indexed"),
+                },
+                { onSuccess: dialog.close },
+              );
+            }}
+          >
+            <label>
+              File name
+              <input
+                autoFocus
+                name="name"
+                defaultValue={managing.original_filename}
+                required
+                maxLength={200}
+              />
+            </label>
+            <label>
+              Folder
+              <select name="folder" defaultValue={managing.folder_id || ""}>
+                <option value="">All resources</option>
+                {folders.data?.map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="check">
+              <input
+                type="checkbox"
+                name="indexed"
+                defaultChecked={managing.indexing_enabled}
+              />
+              Include in course search
+            </label>
+            <Failure
+              error={edit.error || retry.error || reindex.error || remove.error}
             />
-            <div className="row-between">
-              <button
-                className="secondary"
-                disabled={page === 0}
-                onClick={() => setPage(page - 1)}
-              >
-                Previous
+            <FormActions onCancel={dialog.close}>
+              <button className="primary" disabled={busy}>
+                {edit.isPending ? "Saving…" : "Save changes"}
               </button>
-              <span>
-                {page + 1} / {preview.page_count}
-              </span>
+            </FormActions>
+            <div className="dialog-section">
+              <h3>Processing & access</h3>
+              <p className="muted small">
+                File: {managing.process_status} · Search:{" "}
+                {managing.index_status}
+              </p>
+              <div className="actions">
+                <a
+                  className="button secondary"
+                  href={`/api/v1/resources/${managing.id}/download`}
+                >
+                  Download original
+                </a>
+                {managing.process_status === "failed" && (
+                  <button
+                    type="button"
+                    className="secondary"
+                    disabled={busy}
+                    onClick={() => retry.mutate(managing.id)}
+                  >
+                    Retry processing
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="secondary"
+                  disabled={
+                    busy ||
+                    !managing.indexing_enabled ||
+                    managing.process_status !== "ready"
+                  }
+                  onClick={() => reindex.mutate(managing.id)}
+                >
+                  {reindex.isPending ? "Requesting…" : "Rebuild search index"}
+                </button>
+              </div>
+              {reindex.isSuccess && (
+                <p role="status" className="muted small">
+                  Index rebuild queued.
+                </p>
+              )}
+              {retry.isSuccess && (
+                <p role="status" className="muted small">
+                  Processing retry queued.
+                </p>
+              )}
+            </div>
+            <div className="dialog-section">
+              <h3>Remove resource</h3>
+              <p className="muted small">
+                Removes this file from the course library and search. Lectures
+                using this deck may prevent deletion.
+              </p>
               <button
-                className="secondary"
-                disabled={page + 1 >= preview.page_count}
-                onClick={() => setPage(page + 1)}
+                type="button"
+                className="danger"
+                disabled={busy}
+                onClick={() => {
+                  if (confirmDelete)
+                    remove.mutate(managing.id, { onSuccess: dialog.close });
+                  else setConfirmDelete(true);
+                }}
               >
-                Next
+                <Trash2 size={16} />
+                {confirmDelete ? "Confirm delete resource" : "Delete resource…"}
               </button>
             </div>
-          </section>
-        </div>
+          </form>
+        </Dialog>
       )}
     </>
   );
 }
 function Lectures() {
-  const { id, teacher } = useCourse(),
-    [creating, setCreating] = useState(false);
+  const { id, teacher } = useCourse();
+  const dialog = useDialog();
   const lectures = useQuery({
     queryKey: ["lectures", id],
     queryFn: () => api<Lecture[]>(`/courses/${id}/lectures`),
@@ -588,52 +681,66 @@ function Lectures() {
           <p className="muted small">Learn live. Revisit what matters.</p>
         </div>
         {teacher && (
-          <button className="primary" onClick={() => setCreating(!creating)}>
+          <button
+            className="primary"
+            onClick={(e) => {
+              create.reset();
+              dialog.open("create-lecture", e.currentTarget);
+            }}
+          >
             <Plus size={17} />
             Create lecture
           </button>
         )}
       </div>
-      {creating && (
-        <form
-          className="panel spaced"
-          onSubmit={(e) => {
-            e.preventDefault();
-            create.mutate(Object.fromEntries(new FormData(e.currentTarget)), {
-              onSuccess: () => setCreating(false),
-            });
-          }}
+      {teacher && dialog.active === "create-lecture" && (
+        <Dialog
+          title="Create a lecture"
+          description="Choose the slides you will present to your class."
+          onClose={dialog.close}
         >
-          <label>
-            Lecture title
-            <input name="title" required />
-          </label>
-          <label>
-            Prepared slide deck
-            <select name="slide_resource_id" required>
-              <option value="">Choose a processed deck</option>
-              {resources.data
-                ?.filter(
-                  (r) =>
-                    r.process_status === "ready" &&
-                    r.page_count > 0 &&
-                    ["pdf", "pptx"].includes(r.kind),
-                )
-                .map((r) => (
-                  <option key={r.id} value={r.id}>
-                    {r.original_filename}
-                  </option>
-                ))}
-            </select>
-          </label>
-          <p className="muted small">
-            Upload a PDF or PowerPoint in Resources first. Live slides require a
-            prepared deck.
-          </p>
-          <button className="primary" disabled={create.isPending}>
-            Create lecture
-          </button>
-        </form>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              create.mutate(Object.fromEntries(new FormData(e.currentTarget)), {
+                onSuccess: dialog.close,
+              });
+            }}
+          >
+            <label>
+              Lecture title
+              <input autoFocus name="title" required maxLength={200} />
+            </label>
+            <label>
+              Prepared slide deck
+              <select name="slide_resource_id" required>
+                <option value="">Choose a processed deck</option>
+                {resources.data
+                  ?.filter(
+                    (r) =>
+                      r.process_status === "ready" &&
+                      r.page_count > 0 &&
+                      ["pdf", "pptx"].includes(r.kind),
+                  )
+                  .map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.original_filename}
+                    </option>
+                  ))}
+              </select>
+            </label>
+            <p className="muted small">
+              Upload a PDF or PowerPoint in Resources first. Live slides require
+              a prepared deck.
+            </p>
+            <Failure error={create.error || resources.error} />
+            <FormActions onCancel={dialog.close}>
+              <button className="primary" disabled={create.isPending}>
+                {create.isPending ? "Creating…" : "Create lecture"}
+              </button>
+            </FormActions>
+          </form>
+        </Dialog>
       )}
       <Failure error={lectures.error} />
       <div className="spaced">
@@ -704,6 +811,9 @@ function Members() {
   return (
     <>
       <h2>People & access</h2>
+      <Failure
+        error={members.error || requests.error || review.error || remove.error}
+      />
       <section className="panel spaced">
         <h3>Join requests</h3>
         {requests.data?.length === 0 && (
@@ -757,6 +867,12 @@ function Members() {
           <button className="primary" disabled={add.isPending}>
             Add member
           </button>
+          <Failure error={add.error} />
+          {add.isSuccess && (
+            <p className="muted small" role="status">
+              Member added.
+            </p>
+          )}
         </form>
         <form
           className="panel"
@@ -782,6 +898,7 @@ function Members() {
           <button className="primary" disabled={invite.isPending}>
             Create link
           </button>
+          <Failure error={invite.error} />
           {inviteLink && (
             <label>
               Share this one-use link
@@ -815,7 +932,7 @@ function Members() {
 }
 function Settings() {
   const { id, course, teacher } = useCourse();
-  const [deleting, setDeleting] = useState(false);
+  const dialog = useDialog();
   const navigate = useNavigate();
   const metadata = useAction((data: Record<string, FormDataEntryValue>) =>
     api(
@@ -871,6 +988,12 @@ function Settings() {
         <button className="primary" disabled={metadata.isPending}>
           Save course details
         </button>
+        <Failure error={metadata.error} />
+        {metadata.isSuccess && (
+          <p className="muted small" role="status">
+            Course details saved.
+          </p>
+        )}
       </form>
       <form
         className="panel narrow spaced"
@@ -931,28 +1054,55 @@ function Settings() {
           This removes course access, lectures, discussions and database records
           for all members. Media may remain in private storage for recovery.
         </p>
-        <button className="danger" onClick={() => setDeleting(!deleting)}>
+        <button
+          className="danger"
+          onClick={(e) => {
+            remove.reset();
+            dialog.open("delete-course", e.currentTarget);
+          }}
+        >
           Delete this course…
         </button>
-        {deleting && (
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              if (
-                String(new FormData(e.currentTarget).get("confirmation")) ===
-                course?.name
-              )
-                remove.mutate(undefined, { onSuccess: () => navigate("/") });
-            }}
+        {dialog.active === "delete-course" && (
+          <Dialog
+            title="Delete course"
+            description="This permanently removes course records for every member. Type the course name to confirm."
+            onClose={dialog.close}
           >
-            <label>
-              Type the course name to confirm
-              <input name="confirmation" required />
-            </label>
-            <button className="primary" disabled={remove.isPending}>
-              Permanently delete course records
-            </button>
-          </form>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (
+                  String(new FormData(e.currentTarget).get("confirmation")) ===
+                  course?.name
+                )
+                  remove.mutate(undefined, { onSuccess: () => navigate("/") });
+              }}
+            >
+              <label>
+                Type the course name to confirm
+                <input
+                  autoFocus
+                  name="confirmation"
+                  required
+                  placeholder={course?.name}
+                  onChange={(e) =>
+                    e.currentTarget.setCustomValidity(
+                      e.currentTarget.value === course?.name
+                        ? ""
+                        : "Enter the exact course name to confirm deletion.",
+                    )
+                  }
+                />
+              </label>
+              <Failure error={remove.error} />
+              <FormActions onCancel={dialog.close}>
+                <button className="primary" disabled={remove.isPending}>
+                  Permanently delete course records
+                </button>
+              </FormActions>
+            </form>
+          </Dialog>
         )}
       </section>
     </>

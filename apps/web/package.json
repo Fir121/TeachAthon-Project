@@ -4,17 +4,19 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "vite --host 0.0.0.0",
-    "build": "tsc --noEmit && vite build",
+    "dev": "npm run prepare:pdf && vite --host 0.0.0.0",
+    "build": "npm run prepare:pdf && tsc --noEmit && vite build",
     "test": "vitest run",
     "test:e2e": "playwright test",
     "format": "prettier --write src public *.ts *.json index.html",
-    "format:check": "prettier --check src public *.ts *.json index.html"
+    "format:check": "prettier --check src public *.ts *.json index.html",
+    "prepare:pdf": "node scripts/prepare-pdf.mjs"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.1.0",
     "@tanstack/react-query": "^5.90.3",
     "lucide-react": "^0.468.0",
+    "pdfjs-dist": "^6.4.299",
     "qrcode.react": "^4.2.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",

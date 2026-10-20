@@ -1223,6 +1223,46 @@
         }
       }
     },
+    "/api/v1/resources/{rid}/preview": {
+      "get": {
+        "summary": "Document Preview",
+        "operationId": "document_preview_api_v1_resources__rid__preview_get",
+        "parameters": [
+          {
+            "name": "rid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Rid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Authenticated PDF preview",
+            "content": {
+              "application/pdf": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/resources/{rid}/pages/{index}": {
       "get": {
         "summary": "Page Image",

@@ -6,3 +6,5 @@
 **/dist
 media
 test-results
+
+apps/web/public/pdfjs

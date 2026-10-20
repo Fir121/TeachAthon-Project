@@ -6,6 +6,7 @@ import threading
 from datetime import timedelta
 from sqlalchemy import select, or_, and_, update
 from sqlalchemy.orm.exc import StaleDataError
+from sqlalchemy.exc import SQLAlchemyError
 from .db import SessionLocal
 from .models import Job, now
 
@@ -83,7 +84,11 @@ def run_once():
                 return True
             job.status = "queued" if job.attempts < 3 else "failed"
             job.next_run_at = now() + timedelta(seconds=10 * 2**job.attempts)
-            job.error_message = str(exc)[:500]
+            job.error_message = (
+                "Processing could not save its results. Retry processing."
+                if isinstance(exc, SQLAlchemyError)
+                else str(exc)[:500]
+            )
             log.warning("Job %s failed (%s)", job.id, type(exc).__name__)
         finally:
             stop.set()

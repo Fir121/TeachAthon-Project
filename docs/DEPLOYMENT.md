@@ -13,9 +13,9 @@ Open http://localhost:8080. Create a lecturer account, create a course, upload a
 
 For AI features set `OPENAI_API_KEY` in ignored `.env`, then `docker compose up -d --force-recreate api worker`. Never put it in a frontend Vite variable. All model IDs and provider base URL are externalized. `gpt-live-transcribe` uses server WebSocket PCM24k with manual five-second commits; `gpt-transcribe` processes 30-second file windows. Transcript offsets locate input windows, not individual words. Microphone permission, TLS, network and provider errors are surfaced; slides, questions and manual polls remain functional.
 
-Optional generated answers are OFF by default. Semantic indexing without a key uses genuine text extraction and keyword/full-text search; no embeddings are invented. Configure the key and choose Retry search indexing on a resource to add real embeddings. Changing model/dimension after schema creation is rejected; use a deliberate migration, clear old vectors and reindex rather than mixing embedding spaces. Initial supported dimension range is 1–2000 for HNSW.
+Optional generated answers are OFF by default. Semantic indexing without a key uses genuine text extraction and keyword/full-text search; no embeddings are invented. Configure the key and choose Rebuild search index on a resource to add real embeddings. Changing model/dimension after schema creation is rejected; use a deliberate migration, clear old vectors and reindex rather than mixing embedding spaces. Initial supported dimension range is 1–2000 for HNSW.
 
-API docs: `/api/docs` (Swagger UI needs its external JS assets; use `/api/openapi.json` if a restrictive network blocks the UI). Authenticated media URLs support HTTP Range for recording playback. Resources are served with attachment disposition; no public raw media directory exists.
+API docs: `/api/docs` (Swagger UI needs its external JS assets; use `/api/openapi.json` if a restrictive network blocks the UI). Authenticated media URLs support HTTP Range for recording playback. Original-file downloads use attachment disposition. Authenticated PDF/converted-document previews feed a self-hosted PDF.js viewer with page navigation, zoom and an image fallback; no browser PDF plugin is required. The CSP keeps framing disabled and permits same-origin workers and WebAssembly for PDF decoding. No public raw media directory exists.
 
 ## One Linux VM with HTTPS
 
@@ -37,7 +37,7 @@ Only Caddy publishes ports; Postgres remains on the Compose network. API and wor
 
 ## Jobs, failures and storage
 
-Document conversion and indexing have separate visible states. Failed conversion has Retry processing; failed/missing embeddings have Retry search indexing. Jobs claim rows with SKIP LOCKED, retry three times with backoff, and recover processing leases after 15 minutes. Worker runs jobs sequentially. Process long recordings in bounded windows. User originals remain available during processing failures. Resource removal and indexing exclusion immediately filter search through current metadata even before cleanup.
+Document conversion and indexing have separate visible states. Failed conversion has Retry processing; failed/missing embeddings have Rebuild search index. Jobs claim rows with SKIP LOCKED, retry three times with backoff, and recover processing leases after 15 minutes. Worker runs jobs sequentially. Process long recordings in bounded windows. User originals remain available during processing failures. Resource removal and indexing exclusion immediately filter search through current metadata even before cleanup.
 
 Upload limit: 100 MB per file, ingress limit 105 MB including multipart overhead; 500 rendered pages; archive recordings use 4-second browser chunks, max 5 MB each. Check disk with `docker system df` and `df -h`; alert before storage fills. Original media chunks are retained for recovery, so monitor volume growth. Deleted metadata is inaccessible through the API; orphan file garbage collection is not automatic. Review retained file directories during a maintenance window against database storage keys before removal. Do not prune volumes as a cleanup shortcut.
 

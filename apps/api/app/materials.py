@@ -235,6 +235,16 @@ def check_folder(db, cid, parent_id, moving=None):
         parent_id = folder.parent_id
 
 
+def check_folder_name(db, cid, name, parent_id, excluding=None):
+    duplicate = select(Folder.id).where(
+        Folder.course_id == cid, Folder.parent_id == parent_id, func.lower(Folder.name) == name.lower()
+    )
+    if excluding:
+        duplicate = duplicate.where(Folder.id != excluding)
+    if db.scalar(duplicate.limit(1)):
+        raise HTTPException(409, "A folder with this name already exists here. Choose a different name.")
+
+
 @router.get("/courses/{cid}/folders")
 def folders(cid: str, db: DB, user: Actor):
     member(db, cid, user)
@@ -245,6 +255,7 @@ def folders(cid: str, db: DB, user: Actor):
 def create_folder(cid: str, data: FolderInput, db: DB, user: Actor):
     member(db, cid, user, True)
     check_folder(db, cid, data.parent_id)
+    check_folder_name(db, cid, data.name, data.parent_id)
     folder = Folder(course_id=cid, **data.model_dump())
     db.add(folder)
     db.commit()
@@ -256,6 +267,7 @@ def edit_folder(fid: str, data: FolderInput, db: DB, user: Actor):
     folder = require(db, Folder, fid)
     member(db, folder.course_id, user, True)
     check_folder(db, folder.course_id, data.parent_id, fid)
+    check_folder_name(db, folder.course_id, data.name, data.parent_id, fid)
     folder.name, folder.parent_id = data.name, data.parent_id
     db.commit()
     return folder
@@ -418,7 +430,36 @@ def download(rid: str, db: DB, user: Actor, inline: bool = False):
     return FileResponse(
         private_path(r.storage_key),
         media_type=r.content_type,
-        filename=None if inline and r.kind in {"audio", "video"} else r.original_filename,
+        filename=r.original_filename,
+        content_disposition_type="inline" if inline and r.kind in {"audio", "video", "pdf", "txt"} else "attachment",
+    )
+
+
+@router.get(
+    "/resources/{rid}/preview",
+    response_class=FileResponse,
+    responses={
+        200: {
+            "description": "Authenticated PDF preview",
+            "content": {"application/pdf": {"schema": {"type": "string", "format": "binary"}}},
+        }
+    },
+)
+def document_preview(rid: str, db: DB, user: Actor):
+    r = require(db, Resource, rid)
+    member(db, r.course_id, user)
+    if r.kind not in {"pdf", "pptx", "docx"}:
+        raise HTTPException(415, "This resource has no PDF preview.")
+    source = private_path(r.storage_key)
+    pdf = source if r.kind == "pdf" else source.with_suffix(".pdf")
+    if not pdf.is_file() or (r.kind != "pdf" and r.process_status != "ready"):
+        raise HTTPException(409, "The document preview is not ready. Check processing status and retry.")
+    return FileResponse(
+        pdf,
+        media_type="application/pdf",
+        filename=Path(r.original_filename).stem + ".pdf",
+        content_disposition_type="inline",
+        headers={"Cache-Control": "private, no-store"},
     )
 
 

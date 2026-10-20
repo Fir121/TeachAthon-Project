@@ -1,5 +1,12 @@
-import { useState, type FormEvent } from "react";
-import { Link, Route, Routes, useNavigate, useParams } from "react-router-dom";
+import { useEffect, useState, type FormEvent } from "react";
+import {
+  Link,
+  Route,
+  Routes,
+  useNavigate,
+  useLocation,
+  useParams,
+} from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
   BookOpen,
@@ -17,6 +24,7 @@ import {
   type User,
   type Course,
 } from "./api";
+import { Dialog, FormActions, useDialog } from "./Dialog";
 import CoursePage from "./CoursePage";
 import Live, { LectureSetup, Join, Invite } from "./Live";
 import Replay from "./Replay";
@@ -134,7 +142,7 @@ export function Dashboard({ user }: { user: User }) {
     queryKey: ["courses"],
     queryFn: () => api<Course[]>("/courses"),
   });
-  const [creating, setCreating] = useState(false);
+  const dialog = useDialog();
   const create = useAction((data: Record<string, FormDataEntryValue>) =>
     api<Course>("/courses", data),
   );
@@ -147,38 +155,58 @@ export function Dashboard({ user }: { user: User }) {
           <p className="muted">A good question can change the whole lecture.</p>
         </div>
         {user.role === "lecturer" && (
-          <button className="primary" onClick={() => setCreating(!creating)}>
+          <button
+            className="primary"
+            onClick={(e) => {
+              create.reset();
+              dialog.open("create-course", e.currentTarget);
+            }}
+          >
             <Plus size={17} />
             Create course
           </button>
         )}
       </div>
-      {creating && (
-        <form
-          className="panel inline-form"
-          onSubmit={(e) => {
-            e.preventDefault();
-            create.mutate(Object.fromEntries(new FormData(e.currentTarget)), {
-              onSuccess: () => setCreating(false),
-            });
-          }}
+      {user.role === "lecturer" && dialog.active === "create-course" && (
+        <Dialog
+          title="Create a course"
+          description="A shared space for your lectures, resources and class discussions."
+          onClose={dialog.close}
         >
-          <label>
-            Course name
-            <input
-              name="name"
-              required
-              placeholder="e.g. Introduction to Computer Science"
-            />
-          </label>
-          <label>
-            Description
-            <input name="description" />
-          </label>
-          <button className="primary" disabled={create.isPending}>
-            Create
-          </button>
-        </form>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              create.mutate(Object.fromEntries(new FormData(e.currentTarget)), {
+                onSuccess: dialog.close,
+              });
+            }}
+          >
+            <label>
+              Course name
+              <input
+                name="name"
+                required
+                maxLength={150}
+                autoFocus
+                placeholder="e.g. Introduction to Computer Science"
+              />
+            </label>
+            <label>
+              Description
+              <textarea
+                name="description"
+                maxLength={3000}
+                placeholder="What will your students learn?"
+              />
+            </label>
+            <ErrorBox error={create.error} />
+            <FormActions onCancel={dialog.close}>
+              <button className="primary" disabled={create.isPending}>
+                {create.isPending ? "Creating…" : "Create"}
+              </button>
+            </FormActions>
+          </form>
+        </Dialog>
       )}
       <h2 className="section-title">
         <GraduationCap size={22} />
@@ -212,13 +240,17 @@ export function Dashboard({ user }: { user: User }) {
         <div className="empty panel">
           <BookOpen />
           <h3>Your next conversation starts here</h3>
-          <p>Create a course or discover one to join.</p>
+          <p>
+            {user.role === "lecturer"
+              ? "Create your first course, or ask a colleague for a lecturer invitation."
+              : "Discover a course and request access from its teaching team."}
+          </p>
         </div>
       )}
       <Link className="button secondary spaced" to="/join">
         Join a live lecture by code
       </Link>
-      <Discover />
+      {user.role === "student" && <Discover />}
     </>
   );
 }
@@ -257,6 +289,16 @@ export default function App() {
   const notice = useUI((s) => s.notice),
     setNotice = useUI((s) => s.setNotice);
   const navigate = useNavigate();
+  const location = useLocation();
+  const dialogOpen = new URLSearchParams(location.search).has("dialog");
+  useEffect(() => {
+    setNotice("");
+  }, [location.key, setNotice]);
+  useEffect(() => {
+    if (!notice) return;
+    const timer = window.setTimeout(() => setNotice(""), 8000);
+    return () => window.clearTimeout(timer);
+  }, [notice, setNotice]);
   const logout = useAction(async () => {
     await api("/auth/logout", {}, "POST");
     queryClient.clear();
@@ -303,7 +345,7 @@ export default function App() {
           </button>
         </div>
       </header>
-      {notice && (
+      {notice && !dialogOpen && (
         <div className="notice" role="alert">
           {notice}
           <button
