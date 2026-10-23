@@ -47,3 +47,8 @@
 ## External dependencies / operations
 - Need OpenAI API key and supported project entitlement/usage limits for chosen models, VM hostname/domain or temporarily local HTTPS tunnel, Docker, ffmpeg/LibreOffice inside worker images, persistent volume and enough disk for recorded audio.
 - Test public HTTPS (getUserMedia unavailable on insecure external HTTP). Never store actual keys in repo. For browser transcript streaming follow current OpenAI API docs, not assumed SDK method names.
+
+
+## M8 — Owner-promoted interactive slide diagrams
+
+Optional batched actual-image opportunity analysis → any-slide/on-demand generation → private running preview/refinement → deliberate approval → immutable session publication → independent live student exploration → historical archive/slide-timeline exploration. Core permissions, stale-source/jobs, unique approval, zero suggestions, multimodal request validation and the actual opaque CSP renderer are tested. Feature is integrated in the existing worker/API/React/Compose stack. Verification and residual platform limits are recorded in PROGRESS.md / AI_WORKFLOW.md.

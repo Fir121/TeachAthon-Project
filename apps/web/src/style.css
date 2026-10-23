@@ -1726,3 +1726,566 @@ form > .error {
   border-radius: 8px;
   background: #eef4ed;
 }
+
+/* Diagram preparation: slide context, honest activity, and one shared isolated canvas. */
+.shell:has(.diagram-preparation) {
+  max-width: 1560px;
+  padding-top: 24px;
+}
+.preparation-start {
+  margin: 18px 0 22px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: white;
+}
+.preparation-publication {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--line);
+  font-size: 0.82rem;
+}
+.lecture-startbar {
+  padding: 14px 18px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px 24px;
+  align-items: center;
+}
+.lecture-startbar > h2 {
+  font-size: 1.05rem;
+}
+.lecture-startbar > p:first-of-type {
+  display: none;
+}
+.lecture-startbar > label,
+.lecture-startbar > p {
+  grid-column: 1;
+  margin: 0;
+}
+.lecture-startbar > .primary {
+  grid-column: 2;
+  grid-row: 1 / span 3;
+  margin: 0;
+}
+.lecture-startbar > details,
+.lecture-startbar > .error {
+  grid-column: 1 / -1;
+  margin-top: 0;
+}
+.lecture-startbar > p {
+  max-width: 820px;
+  font-size: 0.75rem;
+}
+.diagram-workspace.panel {
+  padding: 0;
+  overflow: clip;
+}
+.diagram-workspace-heading {
+  display: flex;
+  gap: 20px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px;
+}
+.diagram-workspace-heading h2 {
+  margin: 3px 0 6px;
+  font-size: 1.25rem;
+}
+.preparation-notice {
+  padding: 12px 20px;
+  background: #f0f4ec;
+  font-size: 0.85rem;
+}
+.analysis-progress {
+  background: #f3f6f0;
+  border-top: 1px solid var(--line);
+  padding: 12px 20px;
+  display: grid;
+  gap: 8px;
+  font-size: 0.82rem;
+}
+.analysis-progress progress {
+  width: 100%;
+  height: 6px;
+  accent-color: var(--accent);
+}
+.analysis-progress details {
+  color: var(--muted);
+}
+.diagram-selection-toolbar {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 12px 20px;
+  border-block: 1px solid var(--line);
+  background: #fcfdfb;
+  font-size: 0.82rem;
+}
+.diagram-selection-toolbar .actions {
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.diagram-activity {
+  display: flex;
+  gap: 18px;
+  flex-wrap: wrap;
+  padding: 9px 20px;
+  font-size: 0.76rem;
+  color: var(--muted);
+}
+.diagram-workspace-body {
+  display: grid;
+  grid-template-columns: 154px minmax(0, 1fr) 258px;
+  border-top: 1px solid var(--line);
+  min-height: 490px;
+}
+.diagram-slide-rail {
+  background: #f3f5ef;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow: auto;
+  max-height: 650px;
+  border-right: 1px solid var(--line);
+}
+.diagram-slide-item {
+  flex-shrink: 0;
+  padding: 6px;
+  border: 2px solid transparent;
+  border-radius: 9px;
+  display: grid;
+  gap: 5px;
+  background: white;
+}
+.diagram-slide-item.current {
+  border-color: var(--accent);
+}
+.diagram-slide-thumb {
+  padding: 0;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  font-size: 0.78rem;
+}
+.diagram-slide-thumb img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1.414;
+  object-fit: contain;
+  background: #e6eae1;
+  border-radius: 4px;
+  margin-bottom: 4px;
+}
+.diagram-slide-select {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.72rem;
+  min-height: 28px;
+}
+.diagram-slide-select input {
+  width: 16px;
+  height: 16px;
+  min-height: 16px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+.diagram-state,
+.diagram-suggested {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  font-size: 0.65rem;
+  line-height: 1.4;
+  border-radius: 4px;
+  padding: 3px 5px;
+  background: #eff1ed;
+}
+.diagram-state.state-approved {
+  background: #e1f0e6;
+  color: #15513e;
+}
+.diagram-state.state-ready-to-review {
+  background: #e7edfd;
+  color: #234c9c;
+}
+.diagram-state.state-needs-attention {
+  background: #fff0e8;
+  color: #923c2b;
+}
+.diagram-suggested {
+  color: #725522;
+  background: #faf1d9;
+}
+.diagram-selected-slide {
+  padding: 16px;
+  min-width: 0;
+  background: #fafbf8;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.diagram-stage-toolbar {
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.diagram-stage-toolbar .actions {
+  gap: 10px;
+}
+.diagram-view-tabs {
+  display: flex;
+  background: #e9eee5;
+  border-radius: 8px;
+  padding: 3px;
+}
+.diagram-view-tabs button {
+  min-height: 32px;
+  padding: 5px 12px;
+  font-size: 0.78rem;
+  border-radius: 5px;
+}
+.diagram-view-tabs button[aria-pressed="true"] {
+  background: white;
+  box-shadow: 0 1px 4px #22383114;
+}
+.diagram-inline-stage {
+  flex: 1;
+  min-height: 370px;
+  height: 440px;
+  position: relative;
+}
+.diagram-inline-stage > img {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.diagram-inline-stage .diagram-canvas {
+  position: absolute;
+  inset: 0;
+}
+.diagram-expand {
+  align-self: flex-start;
+}
+.diagram-slide-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 20px 16px;
+  border-left: 1px solid var(--line);
+  min-width: 0;
+}
+.diagram-slide-actions p {
+  font-size: 0.83rem;
+}
+.diagram-slide-actions details {
+  font-size: 0.78rem;
+}
+.diagram-current-status {
+  font-size: 0.88rem;
+}
+.diagram-generation-message {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  color: var(--muted);
+  background: #f1f4ed;
+  padding: 12px;
+  border-radius: 8px;
+}
+.diagram-generation-message svg {
+  flex-shrink: 0;
+}
+.diagram-approved-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  color: var(--accent);
+  font-size: 0.75rem;
+}
+.diagram-approved-note svg {
+  flex-shrink: 0;
+}
+.diagram-history-item {
+  display: grid;
+  gap: 5px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+}
+.diagram-history-item button {
+  text-align: left;
+}
+.diagram-dialog.app-dialog {
+  width: calc(100vw - 24px);
+  max-width: 1660px;
+  height: calc(100dvh - 24px);
+  max-height: calc(100dvh - 24px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.diagram-dialog .dialog-header {
+  flex-shrink: 0;
+  padding: 14px 20px;
+  align-items: center;
+}
+.diagram-dialog .dialog-header h2 {
+  font-size: 1.1rem;
+}
+.diagram-dialog .dialog-header p {
+  margin-top: 3px;
+  font-size: 0.75rem;
+}
+.diagram-dialog .dialog-body {
+  flex: 1;
+  min-height: 0;
+  padding: 0;
+}
+.diagram-viewer {
+  display: grid;
+  height: 100%;
+  min-height: 0;
+  grid-template-columns: minmax(0, 1fr) 272px;
+}
+.diagram-visual-stage {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  background: #eef1ea;
+  padding: 12px;
+}
+.diagram-canvas {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  background: white;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.diagram-frame {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  border-radius: inherit;
+  background: white;
+}
+.diagram-stage-message {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 24px;
+  text-align: center;
+  background: #fafbf8;
+  border-radius: inherit;
+  font-size: 0.9rem;
+}
+.diagram-context {
+  overflow: auto;
+  min-height: 0;
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  border-left: 1px solid var(--line);
+  padding-bottom: max(18px, env(safe-area-inset-bottom));
+}
+.diagram-context p {
+  font-size: 0.8rem;
+  line-height: 1.5;
+  margin-top: 4px;
+}
+.diagram-context details {
+  font-size: 0.78rem;
+}
+.diagram-source-reference {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fafbf8;
+}
+.diagram-source-reference img {
+  width: 100%;
+  max-height: 64px;
+  object-fit: contain;
+}
+.diagram-source-reference span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.7rem;
+  margin-top: 5px;
+}
+.diagram-source-expanded {
+  position: absolute;
+  inset: 12px;
+  background: #f2f5ee;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  border-radius: 10px;
+}
+.diagram-source-expanded img {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  object-fit: contain;
+}
+.diagram-source-expanded button {
+  align-self: center;
+}
+.diagram-review-actions {
+  display: grid;
+  gap: 10px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+.diagram-review-actions .actions {
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.diagram-refinement {
+  display: grid;
+  gap: 10px;
+}
+.diagram-refinement textarea {
+  min-height: 84px;
+}
+.diagram-replacement-status:empty {
+  display: none;
+}
+.diagram-viewer-actions {
+  display: grid;
+  gap: 6px;
+  margin-top: auto;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+.diagram-spinner {
+  animation: diagram-spin 1.2s linear infinite;
+}
+span.diagram-spinner {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2px solid var(--line);
+  border-top-color: var(--accent);
+}
+@keyframes diagram-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .diagram-spinner {
+    animation: none;
+  }
+}
+@media (max-width: 1100px) {
+  .diagram-workspace-body {
+    grid-template-columns: 124px minmax(0, 1fr);
+  }
+  .diagram-slide-actions {
+    grid-column: 2;
+    border-left: 0;
+    border-top: 1px solid var(--line);
+  }
+  .diagram-slide-rail {
+    grid-row: 1 / span 2;
+    max-height: 850px;
+  }
+}
+@media (max-width: 700px) {
+  .lecture-startbar {
+    grid-template-columns: 1fr;
+  }
+  .lecture-startbar > .primary {
+    grid-column: 1;
+    grid-row: auto;
+    justify-self: start;
+  }
+  .diagram-workspace-heading {
+    align-items: flex-start;
+    flex-direction: column;
+    padding: 16px;
+    gap: 12px;
+  }
+  .diagram-selection-toolbar {
+    padding: 12px;
+  }
+  .diagram-workspace-body {
+    display: flex;
+    flex-direction: column;
+  }
+  .diagram-slide-rail {
+    flex-direction: row;
+    max-height: none;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .diagram-slide-item {
+    width: 120px;
+  }
+  .diagram-inline-stage {
+    min-height: 300px;
+    height: 340px;
+  }
+  .diagram-dialog.app-dialog {
+    width: calc(100vw - 12px);
+    height: calc(100dvh - 12px);
+    max-height: calc(100dvh - 12px);
+  }
+  .diagram-dialog .dialog-header {
+    padding: 10px 12px;
+  }
+  .diagram-dialog .dialog-header h2 {
+    font-size: 1rem;
+  }
+  .diagram-dialog .dialog-body {
+    overflow: auto;
+  }
+  .diagram-viewer {
+    height: auto;
+    min-height: 100%;
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(350px, 58dvh) auto;
+  }
+  .diagram-visual-stage {
+    padding: 8px;
+  }
+  .diagram-context {
+    overflow: visible;
+    border-left: 0;
+    border-top: 1px solid var(--line);
+    gap: 12px;
+    padding: 14px;
+  }
+  .diagram-source-reference {
+    flex-direction: row;
+    gap: 12px;
+    align-self: flex-start;
+  }
+  .diagram-source-reference img {
+    width: 90px;
+    max-height: 65px;
+  }
+}

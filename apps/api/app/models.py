@@ -330,3 +330,50 @@ class Feedback(Base):
     analysis_json: Mapped[dict] = mapped_column(JSON, default=dict)
     ai_modified: Mapped[bool] = mapped_column(default=False)
     linked_question_id: Mapped[str | None] = mapped_column(ForeignKey("questions.id", ondelete="SET NULL"))
+
+
+class DiagramAnalysis(Base):
+    __tablename__ = "diagram_analyses"
+    id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=uid)
+    course_id: Mapped[str] = mapped_column(ForeignKey("courses.id", ondelete="CASCADE"))
+    lecture_id: Mapped[str] = mapped_column(ForeignKey("lectures.id", ondelete="CASCADE"))
+    source_fingerprint: Mapped[str]
+    fingerprints: Mapped[list] = mapped_column(JSON)
+    suggestions: Mapped[list] = mapped_column(JSON, default=list)
+    completed_pages: Mapped[int] = mapped_column(default=0)
+    input_note: Mapped[str] = mapped_column(default="")
+    job_id: Mapped[str] = mapped_column(ForeignKey("processing_jobs.id", ondelete="CASCADE"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    __table_args__ = (UniqueConstraint("lecture_id", "source_fingerprint", name="diagram_analysis_source_once"),)
+
+
+class DiagramRevision(Base):
+    __tablename__ = "diagram_revisions"
+    id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=uid)
+    course_id: Mapped[str] = mapped_column(ForeignKey("courses.id", ondelete="CASCADE"))
+    lecture_id: Mapped[str] = mapped_column(ForeignKey("lectures.id", ondelete="CASCADE"))
+    slide_index: Mapped[int]
+    request_id: Mapped[str] = mapped_column(Uuid(as_uuid=False))
+    source_fingerprint: Mapped[str]
+    status: Mapped[str] = mapped_column(default="pending")
+    feedback: Mapped[str] = mapped_column(default="")
+    artifact: Mapped[dict | None] = mapped_column(JSON)
+    model: Mapped[str]
+    job_id: Mapped[str] = mapped_column(ForeignKey("processing_jobs.id", ondelete="CASCADE"))
+    approved_by: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    __table_args__ = (
+        UniqueConstraint("lecture_id", "request_id", name="diagram_request_once"),
+        CheckConstraint("slide_index >= 0"),
+        CheckConstraint("status IN ('pending','preview','approved','rejected','superseded','stale')"),
+        Index(
+            "diagram_one_approved_slide",
+            "lecture_id",
+            "slide_index",
+            unique=True,
+            postgresql_where=text("status = 'approved'"),
+            sqlite_where=text("status = 'approved'"),
+        ),
+    )

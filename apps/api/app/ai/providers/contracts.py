@@ -21,3 +21,15 @@ class LiveTranscriber(Protocol):
     async def commit(self) -> None: ...
     def receive_events(self) -> AsyncIterator[dict]: ...
     async def close(self) -> None: ...
+
+
+class VisionModel(Protocol):
+    async def structured_images(
+        self,
+        prompt: str,
+        images: list[str],
+        schema: type[BaseModel],
+        *,
+        timeout: float = 120,
+        max_output_tokens: int = 12000,
+    ) -> BaseModel: ...

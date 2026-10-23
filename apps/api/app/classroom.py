@@ -142,6 +142,9 @@ def start(lid: str, data: StartInput, db: DB, user: Actor):
     resource = require(db, Resource, lecture.slide_resource_id)
     if resource.process_status != "ready" or not resource.pages:
         raise HTTPException(409, "The slide deck is not ready.")
+    from .diagrams import freeze_approved
+
+    freeze_approved(db, lecture)
     session = LiveSession(
         lecture_id=lid,
         course_id=lecture.course_id,
@@ -206,7 +209,10 @@ def snapshot(sid: str, db: DB, user: Actor):
             .limit(2000)
         )
     )
+    from .diagrams import approved_for
+
     return {
+        "diagrams": approved_for(db, lecture, index=session.active_slide_index if session.state == "live" else None),
         "session": session_json(session, teacher),
         "lecture": {
             "id": lecture.id,

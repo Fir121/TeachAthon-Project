@@ -40,3 +40,13 @@ LectureLoop is a **human-centred live classroom and persistent course discussion
 
 ## Out of scope for initial version
 Multi-turn AI chat, general independent tutoring, direct unrestricted AI answers, grade books, assignment workflow, sign-language avatar, video screen recording, external screen analysis, local LLM deployment itself, personalization and adaptive quizzes, browser push/email, slide animations preservation, student draft courses.
+
+
+## Interactive slide exploration — promoted into scope 2026-10-23
+
+Lecturers may skip preparation entirely, explicitly find zero or more useful interactive opportunities, or generate an experiment for any slide. Real slide vision generates self-contained responsive HTML/CSS/JS; a lecturer tries the isolated preview, compares the original slide, and approves/rejects or refines/regenerates. Only approved revisions at lecture start publish; all mutations stop once the lecture starts. New revisions require approval and never silently replace an approved version. Errors and processing do not block lecture start.
+
+Students independently opt into an **Explore interactive diagram** modal only on a live active slide with a published diagram. Projected slides stay unchanged. The same course-protected interaction is available on the historical replay slide, with slide-timeline navigation even without audio. Slide changes/close stop the old viewer and local state is discarded; no student progress is saved. Pixel changes suppress mismatched artifacts, while late OCR does not. Generated content remains untrusted executable code under an opaque iframe sandbox and dedicated CSP. See AI_WORKFLOW.md §14 for limits.
+
+
+Owner UI revision: diagram preparation uses an integrated slide workspace with explicit selection of one or several slides, honest per-slide loading and a ready list that does not interrupt browsing. Lecturer review uses a dominant laptop visual area, compact expandable source reference, in-place refinement, and Approve and next without an extra checkbox. New generated layouts must adapt to laptop width/height and stack on phones. Existing published artifacts retain their source; viewer improvements apply across live and replay.

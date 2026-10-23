@@ -3,6 +3,7 @@
 ## AI abstraction boundaries
 Define provider contracts under `apps/api/app/ai/providers/` for:
 - `TextModel.structured(prompt, schema)` -> validated Pydantic JSON for topic classification, question equivalence / clustering, feedback classifier, concise source-based optional answer, excerpt selection.
+- `VisionModel.structured_images(prompt, local_image_data_urls, schema)` -> validated opportunity/artifact output for explicit optional interactive-diagram preparation; bounded actual slide images, separate env-configured model, private revision + human approval lifecycle. See AI_WORKFLOW.md §14.
 - `EmbeddingProvider.embed(texts)` -> embeddings + model ID/dimension.
 - `LiveTranscriber.start_session(...), send_audio(...), receive_events(...), close(...)` -> partial/final transcript events.
 - `BatchTranscriber.transcribe(audio_file|chunks)` -> timestamped segments or mapped relative offsets.

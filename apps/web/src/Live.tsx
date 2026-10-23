@@ -26,6 +26,11 @@ import LecturerQueue from "./LecturerQueue";
 import FeedbackNote from "./FeedbackNote";
 import { Dialog, useDialog } from "./Dialog";
 import ImageUpload from "./ImageUpload";
+import {
+  DiagramPreparation,
+  ExploreDiagram,
+  type Diagram,
+} from "./InteractiveDiagrams";
 export type Session = {
   id: string;
   lecture_id: string;
@@ -59,6 +64,7 @@ export type Annotation = {
   coordinates?: "stage" | "slide";
 };
 export type Snapshot = {
+  diagrams?: Diagram[];
   participants?: number;
   session: Session;
   lecture: { id: string; title: string; banner_url?: string | null };
@@ -166,128 +172,115 @@ export function LectureSetup() {
             />
           </Dialog>
         )}
-      <div className="lecture-setup">
-        <section className="panel">
-          <img
-            className="slide"
-            src={slides.data?.[index]?.image_url}
-            alt={`Slide ${index + 1}`}
-          />
-          <div className="row-between">
-            <button
-              className="secondary"
-              disabled={!index}
-              onClick={() => setIndex(index - 1)}
-            >
-              Previous
-            </button>
-            <span>
-              {index + 1} / {slides.data?.length || 0}
-            </span>
-            <button
-              className="secondary"
-              disabled={index + 1 >= (slides.data?.length || 0)}
-              onClick={() => setIndex(index + 1)}
-            >
-              Next
-            </button>
-          </div>
-        </section>
-        {course.data?.membership === "lecturer" && (
-          <section className="panel">
-            <h2>Start a live lecture</h2>
-            <p className="muted spaced">
-              Students follow your slides, respond to understanding checks, and
-              ask questions in their course space.
-            </p>
-            <label className="check spaced">
-              <input
-                type="checkbox"
-                checked={record}
-                onChange={(e) => setRecord(e.target.checked)}
-              />
-              Record microphone audio for course replay
-            </label>
-            <p className="muted small spaced">
-              Let your class know before recording. Audio and transcripts are
-              available only to enrolled course members. Microphone capture
-              starts when you choose it in the control room.
-            </p>
-            {(activeLecture ||
-              (start.error instanceof ApiError &&
-                start.error.activeSession)) && (
-              <div className="error spaced" role="alert">
-                <p>
-                  {activeLecture
-                    ? `${activeLecture.title} is already live in this course.`
-                    : start.error?.message}
-                </p>
-                <Link
-                  className="button secondary spaced"
-                  to={
-                    activeLecture
-                      ? `/sessions/${activeLecture.session!.id}`
-                      : (start.error as ApiError).activeSession!.url
-                  }
-                >
-                  Open live lecture
-                </Link>
-              </div>
-            )}
-            <button
-              className="primary spaced"
-              disabled={
-                start.isPending || !slides.data?.length || !!activeLecture
-              }
-              onClick={() =>
-                start.mutate(undefined, {
-                  onSuccess: (s) => navigate(`/sessions/${s.id}`),
-                })
-              }
-            >
-              <Radio size={16} />
-              Start lecture
-            </button>
-            <Failure error={start.error} />
-            <details className="spaced">
-              <summary>Optional teaching outline</summary>
-              <button
-                className="secondary spaced"
-                disabled={
-                  generateOutline.isPending ||
-                  outline.data?.jobs.some((j) =>
-                    ["queued", "processing"].includes(j.status),
-                  )
-                }
-                onClick={() => generateOutline.mutate()}
-              >
-                Generate outline from slides
-              </button>
-              {outline.data?.outline?.topics.map((topic) => (
-                <p className="muted small spaced" key={topic}>
-                  {topic}
-                </p>
-              ))}
-              {outline.data?.outline?.status && (
-                <p className="muted small spaced" role="status">
-                  {outline.data.outline.status === "ready"
-                    ? "All extracted slide sections processed."
-                    : `${outline.data.outline.status === "partial" ? "Partial outline" : "Processing outline"}: ${outline.data.outline.completed_sections || 0} of ${outline.data.outline.total_sections || 0} sections processed.`}
-                  {outline.data.outline.showing_previous &&
-                    " The previous outline is shown while the replacement is prepared."}
-                  {outline.data.outline.error &&
-                    ` ${outline.data.outline.error}`}
-                </p>
+      {course.data?.membership === "lecturer" ? (
+        <DiagramPreparation
+          lectureId={id!}
+          index={index}
+          onSelect={setIndex}
+          slides={slides.data || []}
+        >
+          {course.data?.membership === "lecturer" && (
+            <section className="lecture-startbar">
+              <h2>Start a live lecture</h2>
+              <p className="muted spaced">
+                Students follow your slides, respond to understanding checks,
+                and ask questions in their course space.
+              </p>
+              <label className="check spaced">
+                <input
+                  type="checkbox"
+                  checked={record}
+                  onChange={(e) => setRecord(e.target.checked)}
+                />
+                Record microphone audio for course replay
+              </label>
+              <p className="muted small spaced">
+                Let your class know before recording. Audio and transcripts are
+                available only to enrolled course members. Microphone capture
+                starts when you choose it in the control room.
+              </p>
+              {(activeLecture ||
+                (start.error instanceof ApiError &&
+                  start.error.activeSession)) && (
+                <div className="error spaced" role="alert">
+                  <p>
+                    {activeLecture
+                      ? `${activeLecture.title} is already live in this course.`
+                      : start.error?.message}
+                  </p>
+                  <Link
+                    className="button secondary spaced"
+                    to={
+                      activeLecture
+                        ? `/sessions/${activeLecture.session!.id}`
+                        : (start.error as ApiError).activeSession!.url
+                    }
+                  >
+                    Open live lecture
+                  </Link>
+                </div>
               )}
-              {outline.data?.jobs.map((j, i) => (
-                <p className="muted small" key={i}>
-                  {j.status} {j.error}
-                </p>
-              ))}
-            </details>
-          </section>
-        )}
-      </div>
+              <button
+                className="primary spaced"
+                disabled={
+                  start.isPending || !slides.data?.length || !!activeLecture
+                }
+                onClick={() =>
+                  start.mutate(undefined, {
+                    onSuccess: (s) => navigate(`/sessions/${s.id}`),
+                  })
+                }
+              >
+                <Radio size={16} />
+                Start lecture
+              </button>
+              <Failure error={start.error} />
+              <details className="spaced">
+                <summary>Optional teaching outline</summary>
+                <button
+                  className="secondary spaced"
+                  disabled={
+                    generateOutline.isPending ||
+                    outline.data?.jobs.some((j) =>
+                      ["queued", "processing"].includes(j.status),
+                    )
+                  }
+                  onClick={() => generateOutline.mutate()}
+                >
+                  Generate outline from slides
+                </button>
+                {outline.data?.outline?.topics.map((topic) => (
+                  <p className="muted small spaced" key={topic}>
+                    {topic}
+                  </p>
+                ))}
+                {outline.data?.outline?.status && (
+                  <p className="muted small spaced" role="status">
+                    {outline.data.outline.status === "ready"
+                      ? "All extracted slide sections processed."
+                      : `${outline.data.outline.status === "partial" ? "Partial outline" : "Processing outline"}: ${outline.data.outline.completed_sections || 0} of ${outline.data.outline.total_sections || 0} sections processed.`}
+                    {outline.data.outline.showing_previous &&
+                      " The previous outline is shown while the replacement is prepared."}
+                    {outline.data.outline.error &&
+                      ` ${outline.data.outline.error}`}
+                  </p>
+                )}
+                {outline.data?.jobs.map((j, i) => (
+                  <p className="muted small" key={i}>
+                    {j.status} {j.error}
+                  </p>
+                ))}
+              </details>
+            </section>
+          )}
+        </DiagramPreparation>
+      ) : (
+        <img
+          className="slide"
+          src={slides.data?.[index]?.image_url}
+          alt={`Slide ${index + 1}`}
+        />
+      )}
     </>
   );
 }
@@ -636,6 +629,7 @@ export default function Live() {
   );
   useEffect(() => {
     function key(e: KeyboardEvent) {
+      if (document.querySelector("dialog[open]")) return;
       if (
         e.target instanceof HTMLElement &&
         (["INPUT", "TEXTAREA", "SELECT"].includes(e.target.tagName) ||
@@ -811,6 +805,11 @@ export default function Live() {
           <section className="panel presenter-surface" ref={presenter}>
             {slides}
           </section>
+          <ExploreDiagram
+            key={`${id}:${index}`}
+            diagrams={data.diagrams}
+            index={index}
+          />
           {teacher && (
             <section className="panel spaced">
               <div className="row-between">

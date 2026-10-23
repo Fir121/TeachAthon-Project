@@ -3,6 +3,7 @@ import { Link, useParams, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { api, useAction } from "./api";
 import { SlideView, type Snapshot, type Annotation } from "./Live";
+import { ExploreDiagram } from "./InteractiveDiagrams";
 import { Failure, Status } from "./CoursePage";
 export type Segment = {
   id: string;
@@ -126,6 +127,25 @@ export default function Replay() {
           <p className="muted small spaced">
             Slide {index + 1} · {timeLabel(time)}
           </p>
+          <ExploreDiagram
+            key={`${id}:${index}`}
+            diagrams={data.diagrams}
+            index={index}
+          />
+          <nav className="actions spaced" aria-label="Slide timeline">
+            {(timeline.data || [])
+              .filter((e) => e.type === "slide.changed")
+              .map((e, i) => (
+                <button
+                  className="secondary"
+                  key={i}
+                  aria-current={index === e.payload.index ? "step" : undefined}
+                  onClick={() => seek(e.offset_ms)}
+                >
+                  Slide {(e.payload.index || 0) + 1} · {timeLabel(e.offset_ms)}
+                </button>
+              ))}
+          </nav>
           {status.data?.recording_state === "ready" ? (
             <>
               <audio

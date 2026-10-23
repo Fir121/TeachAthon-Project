@@ -99,6 +99,13 @@ All course data requires active membership. Lecturer commands additionally check
 | DELETE | `/api/v1/answer-sources/{qid}` |
 | PATCH | `/api/v1/answer-sources/{qid}` |
 | POST | `/api/v1/feedback/{fid}/route` |
+| GET | `/api/v1/lectures/{lid}/diagrams/preparation` |
+| POST | `/api/v1/lectures/{lid}/diagrams/analyse` |
+| POST | `/api/v1/lectures/{lid}/diagrams/generate` |
+| GET | `/api/v1/lectures/{lid}/diagrams/approved` |
+| GET | `/api/v1/diagrams/{did}/preview` |
+| POST | `/api/v1/diagrams/{did}/{action}` |
+| GET | `/api/v1/diagrams/{did}/render` |
 | WebSocket | `/ws/sessions/{sid}` |
 | WebSocket | `/ws/sessions/{sid}/audio` |
 
@@ -142,3 +149,13 @@ Course search accepts 1–200 characters of search words and uses local all-keyw
 - Match DTOs can contain multiple `excerpts` with actual offsets/URLs and complete/partial coverage. Partial or unresolved associations remain lecturer-only; answered learners retain whole-recording fallback. Earlier unversioned ready suggestions are lecturer `legacy` review data until explicitly rechecked/corrected. New lecturer-selected ranges carry `lecturer_selected=true` and background jobs preserve them.
 - New lecturer-only POST `/answer-sources/{qid}/reprocess` returns 202 and deduplicates active jobs; it requires an ended session with ready recording (409 otherwise). Explicit rechecking can replace an earlier selected/removed association; background work cannot restore removed links.
 - Outline responses retain `topics` and add versioned processing/partial/ready status, completed/total section counts, page coverage and stable topic references. All source sections are processed in token-bounded checkpoint batches.
+
+
+## Interactive diagrams (0016)
+
+- Lecturer-only GET `/lectures/{lid}/diagrams/preparation`: lock flag, checkpointed analysis/input caveat/suggestions and revision metadata/status/job attempts/errors; never artifact source.
+- Lecturer-only POST `/lectures/{lid}/diagrams/analyse` (202): explicit full-deck batched analysis; repeated same-pixel requests reuse work and failed requests resume it. Zero suggestions is a successful complete result.
+- Lecturer-only POST `/lectures/{lid}/diagrams/generate` (202): `{request_id:UUID,slide_index:int,feedback?:string}`; any in-range slide, including unsuggested slides. Optional `feedback` (up to 1,500 characters) carries initial lecturer teaching notes or later refinement, stored privately and passed as `lecturer_guidance` with the slide. Empty is valid. UUID replays deduplicate; changed payload reuse is 409; identical active requests coalesce. Regenerate creates a private revision.
+- Lecturer-only GET `/diagrams/{id}/preview`: completed preview metadata. POST `/diagrams/{id}/approve` and `/diagrams/{id}/reject` explicitly approve or reject/unpublish before start. Approval atomically supersedes the earlier approved revision.
+- Member GET `/lectures/{lid}/diagrams/approved`: published source-matching metadata, restricted to active index during live teaching. Session snapshots include `diagrams` with the same restriction; ended snapshots return all published slides for replay.
+- Member GET `/diagrams/{id}/render?viewer=UUID`: authenticated HTML with renderer CSP, no-store and opaque sandbox. Requires `Sec-Fetch-Dest: iframe` and `Sec-Fetch-Site: same-origin`; direct navigation is 403. Students receive 404 for unapproved/rejected/superseded, unpublished or inactive-live-slide artifacts; source mismatch is 409. Lecturers can render completed previews through the same route. Missing login 401; nonmember/cross-course/removed member 404; student preparation commands 403; invalid index/input 422. All mutation endpoints return 409 after a session has ever started. In-flight workers cannot publish late results.

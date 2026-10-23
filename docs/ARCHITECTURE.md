@@ -87,3 +87,8 @@ Organize backend by clear domain module and shared models rather than elaborate 
 - Explicit lecturer vs student membership, server checks for every course and media operation; limits on upload size/type; path traversal and HTML sanitisation; no public raw media directories; MIME sniffing; bounded AI inputs.
 - Raw audio chunk integrity checked and assembled in chronological order. If upload fails, display actionable state and retry. Recover from processing/AI failures without losing slides, polls or posted questions.
 - Keep sensitive environment keys on VM only, `.env.example` documents them. VM backups for DB and media and log rotation; avoid logging transcripts/private question bodies in reverse proxy or error tracing.
+
+
+## Interactive diagram extension (0016)
+
+Existing Postgres worker types `analyse_diagrams` / `generate_diagram` use a separate multimodal provider contract. Six-image analysis checkpoints yield to other queue work. Durable proposals/revisions remain private until lecturer approval and session-start publication under the shared lecture lock. No provider call holds that lock. Snapshots project only published active-slide metadata; replay projects historical published slides. An authenticated server-built HTML document executes only inside an opaque allow-scripts iframe. Caddy forwards its distinct CSP without the main app's incompatible global CSP; generated code never enters React's DOM. See AI_WORKFLOW.md §14 and DEPLOYMENT.md for security bounds and configuration.

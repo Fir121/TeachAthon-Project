@@ -18,7 +18,12 @@ from .ai.retrieval import index_resource, index_session, index_question
 from .intelligence import topic_job, grouping_job, feedback_job, match_job, outline_job
 from .ai.grouping import verify_group_job, queue_semantic_backfill
 
+from .ai.diagrams import analysis_job, generation_job
+from .diagram_render import DiagramValidationError
+
 HANDLERS = {
+    "analyse_diagrams": analysis_job,
+    "generate_diagram": generation_job,
     "infer_topic": topic_job,
     "group_questions": grouping_job,
     "classify_feedback": feedback_job,
@@ -72,6 +77,7 @@ def run_once():
         job.lease_until = now() + timedelta(minutes=15)
         db.commit()
         job_id = job.id
+        claimed_attempt = job.attempts
         stop = threading.Event()
         renewal = threading.Thread(target=heartbeat, args=(job_id, job.attempts, stop), daemon=True)
         renewal.start()
@@ -80,8 +86,12 @@ def run_once():
             if not handler:
                 raise RuntimeError(f"Unsupported job type: {job.type}")
             complete = handler(db, job)
-            if not db.scalar(select(Job.id).where(Job.id == job_id)):
+            current = db.scalar(
+                select(Job).where(Job.id == job_id).with_for_update().execution_options(populate_existing=True)
+            )
+            if not current or current.attempts != claimed_attempt or current.status != "processing":
                 return True
+            job = current
             job.status = "queued" if complete is False else "ready"
             if complete is False:
                 job.attempts = 0
@@ -90,16 +100,28 @@ def run_once():
         except Exception as exc:
             db.rollback()
             job = db.get(Job, job_id)
-            if not job:
+            if not job or job.attempts != claimed_attempt or job.status != "processing":
                 return True
             job.status = "queued" if job.attempts < 3 else "failed"
             job.next_run_at = now() + timedelta(seconds=10 * 2**job.attempts)
             job.error_message = (
                 "Processing could not save its results. Retry processing."
                 if isinstance(exc, SQLAlchemyError)
-                else str(exc)[:500]
+                else (
+                    str(exc)
+                    if isinstance(exc, DiagramValidationError)
+                    else "Diagram processing failed. Retry or refine; if it persists, check server AI configuration. "
+                    "Invalid, incomplete or unsupported generated output is never published."
+                    if job.type in {"analyse_diagrams", "generate_diagram"}
+                    else str(exc)[:500]
+                )
             )
-            log.warning("Job %s failed (%s)", job.id, type(exc).__name__)
+            log.warning(
+                "Job %s failed (%s)%s",
+                job.id,
+                type(exc).__name__,
+                f": {exc}" if isinstance(exc, DiagramValidationError) else "",
+            )
         finally:
             stop.set()
             renewal.join(timeout=1)

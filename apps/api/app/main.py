@@ -280,3 +280,7 @@ app.include_router(intelligence_router)
 from .pictures import router as pictures_router
 
 app.include_router(pictures_router)
+
+from .diagrams import router as diagrams_router
+
+app.include_router(diagrams_router)

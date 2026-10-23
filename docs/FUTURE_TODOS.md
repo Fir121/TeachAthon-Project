@@ -10,14 +10,15 @@
 
 ## P1 — High-value next features
 
-### 1. AI-enhanced interactive slides and diagrams
-- [ ] During resource ingestion, identify a small number of slides (e.g. 3–4 per lecture) whose diagrams could benefit from interaction.
-- [ ] Surface optional, AI-enhanced diagrams/animations/simulations on students' devices when those slides are presented.
-- [ ] Prefer generation of genuine concept-specific interactive experiences, not merely decorative animations.
-- [ ] Decide on generation strategy, quality checks, safety, lecturer approval, and fallback to original static slide.
-- [ ] Ensure interaction remains optional and does not interrupt the lecturer or alter the projected slide.
+### 1. AI-enhanced interactive slides and diagrams — promoted and implemented 2026-10-23
+- [x] Explicit optional preparation analyses all slides in bounded actual-image batches, with zero-or-more suggestions and no target count.
+- [x] Manual generation on any slide, on-demand suggestion generation, private preview/refinement and lecturer approval.
+- [x] Genuine concept-specific HTML/CSS/JavaScript interactions through an authenticated opaque sandbox and dedicated renderer CSP.
+- [x] Optional current-slide student experience, unchanged projection and independent local state.
+- [x] Same approved experience on historical replay slides, including slide-timeline navigation without audio.
+- [x] Immutable publication at lecture start, source-pixel mismatch protection, revision/deduplication/permissions tests and real browser/provider verification.
 
-**Why:** An especially interesting near-future differentiator identified by the owner. **Dependency:** dependable slide ingestion and live slide synchronisation.
+Implementation: `apps/api/app/diagrams.py`, `apps/api/app/ai/diagrams.py`, `apps/web/src/InteractiveDiagrams.tsx`. Tests: `apps/api/tests/test_diagrams.py`, `apps/web/e2e/interactive-diagrams.spec.ts`. See AI_WORKFLOW.md §14 and PROGRESS.md for verified scope and remaining browser/quality limitations. This item is no longer deferred; no commit identifier is fabricated.
 
 ### 2. Concept checks and end-of-lecture comprehension
 - [ ] Let lecturers create or approve topic-linked questions while preparing/reviewing a lecture outline.
@@ -118,4 +119,4 @@
 4. If an item is built, mark `[x]`, link to the relevant commit/PR and tests, and update product/architecture documents.
 5. Keep the human-first, course-scoped retrieval and lecturer-control principles intact throughout future iterations.
 
-**Last updated:** 2026-10-20 · **Owner review:** Pending
+**Last updated:** 2026-10-23 · **Owner review:** Pending

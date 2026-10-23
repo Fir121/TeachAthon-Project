@@ -14,7 +14,7 @@
 - Lecturer may mark a question answered. No separate start-answer/stop-answer interaction. Recording excerpt matching happens asynchronously; a marked question stays answered even when a precise excerpt is not found, with honest playback state. Without marking, AI may suggest to lecturer (not silently resolve).
 - Forum: EdStem-like posts and replies, lecturer and student authors, source search before posting, automatic carry-over of live Q&A, meaningful search. Lecturer controls resource and content moderation.
 - Live captions visible in an optional student panel; no live transcript search. Post-lecture transcripts searchable. Interface responsive on all viewports; mobile-first student UI.
-- Future only: general screen sharing, live-code and full video, multi-language, sign-language interpretation support, adaptive quizzes, interactive visual diagrams, standalone student-created draft courses, flashcards/revision, LMS integration.
+- Future only: general screen sharing, live-code and full video, multi-language, sign-language interpretation support, adaptive quizzes, standalone student-created draft courses, flashcards/revision, LMS integration.
 - MVP all key features genuinely operational; no mock workflows. CS50 sample lecture/demo is **after** application foundation, not driving architecture.
 - Single Codex agent builds from scratch; OpenAI API available; all deployments one Linux VM using Docker Compose; reasonable paid outbound AI APIs OK.
 
@@ -115,3 +115,18 @@
 - Grouping checks all members/requests, rejects missing assumptions and uncertain/distinct teaching needs, and keeps every card visible. Existing auto groups undergo review before bulk answering; manual decisions and human answered states remain intact. Different requested quantities (runtime versus comparison count without shared premises) stay separate.
 - Transcript windows are contextualised before semantic selection; complete multi-request coverage may link multiple real passages. Partial coverage stays lecturer-only, with whole-recording fallback. Unversioned ready links are retained for explicit lecturer review; new manual selections and removed links are protected from background replacement.
 - Input/token/source budgets are explicit, with complete sections and balanced sources. Outlines map every section, save checkpoints and reduce hierarchically; partial status is visible. Existing local OCR/semchunk remain as approved. No additional service/model provider/dependency introduced. Simple offline regressions plus one authored real PostgreSQL/provider gate check the changes.
+
+
+## Interactive diagrams — owner-promoted scope, 2026-10-23
+
+- Optional explicit six-page checkpointed vision analysis, with zero suggestions valid and no count target. Generate on demand from suggested or any manually selected slide. Separate env-configured multimodal adapter; no change to text-provider semantics and no new service/dependency.
+- Durable private revisions in Postgres, pixel fingerprints independent of OCR, request deduplication and one-approved-per-slide partial unique index. One lecture-row lock serializes edits, final worker writes and start; long provider calls release it. Start publishes only already approved artifacts and makes all preparation mutations final, including for archive.
+- The same opaque `sandbox="allow-scripts"` viewer serves preview/live/archive. Route-specific authenticated HTML CSP is forwarded without the conflicting global Caddy policy; the main policy is unchanged. Static checks supplement CSP/sandbox and cannot prove arbitrary code safe. Browser CPU/self-navigation limitations are documented rather than hidden.
+- Replay now exposes actual slide-event navigation as well as audio/transcript seeking, making exploration available without recording. Human review and source-slide comparison stay central; valid model output is not certified educational correctness.
+
+
+## Owner-approved diagram UI revision — 2026-10-23
+
+- Integrated slide workspace, explicit multi-slide selection/generation, per-slide real job feedback, ready-list entry to review and no background auto-opening.
+- Approve and next after a running preview replaces the extra checkbox. In-place refinement and explicit replacement review preserve current approvals. Source reference stays compact and expandable; start remains independent.
+- A full-viewport laptop canvas/context sidebar replaces the tall stacked viewer. Shared frame execution/security is separate from presentation. New generated HTML follows a structurally validated responsive-v2 visual/controls convention with trusted layout CSS; published/legacy code is not rewritten. No migration or batch endpoint.

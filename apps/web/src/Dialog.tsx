@@ -48,7 +48,11 @@ export function Dialog({
   description,
   onClose,
   children,
+  className = "",
+  initialFocusSelector,
 }: {
+  className?: string;
+  initialFocusSelector?: string;
   title: string;
   description?: string;
   onClose: () => void;
@@ -68,7 +72,8 @@ export function Dialog({
     // React autoFocus runs before a closed dialog is visible. Move focus after opening.
     dialog
       .querySelector<HTMLElement>(
-        "input:not([type=checkbox]):not([type=hidden]), textarea, select",
+        initialFocusSelector ||
+          "input:not([type=checkbox]):not([type=hidden]), textarea, select",
       )
       ?.focus();
     document.body.style.overflow = "hidden";
@@ -81,7 +86,7 @@ export function Dialog({
   return (
     <dialog
       ref={ref}
-      className="app-dialog"
+      className={`app-dialog ${className}`}
       aria-labelledby={titleId}
       aria-describedby={description ? descriptionId : undefined}
       onCancel={(event) => {

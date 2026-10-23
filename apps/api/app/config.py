@@ -18,6 +18,8 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     openai_base_url: str = "https://api.openai.com/v1"
     openai_text_model: str = "gpt-4.1-mini"
+    openai_diagram_model: str = "gpt-4.1-mini"
+    diagram_timeout_seconds: float = Field(default=120, gt=0, le=180)
     openai_embed_model: str = "text-embedding-3-small"
     openai_embed_dimensions: int = 1536
     openai_live_stt_model: str = "gpt-live-transcribe"
