@@ -40,3 +40,7 @@ Archive navigation, eyebrow and title occupy separate rows. Saved annotation/cle
 ## Classroom simplification — 2026-10-22
 
 Create lecture includes Upload slides, preparation status/retry and automatic selection when rendering is ready, preserving the title. Fullscreen uses visible contrasting control/annotation toolbars and an Exit fullscreen action. Post question runs retrieval and automatically posts only on a complete warning-free empty result; matches require continuation, failures offer retry/explicit Post anyway. No new anonymity/visibility options. Notes disclose sender identity to lecturers and remain lecturer-only. Only authors see Edit; lecturers can delete others’ content. Deleted threads close with a notice; lists/open replies update within two seconds or through live events. A competing lecture start shows the existing session and Open live lecture, with no automatic termination.
+
+## Follow-up corrections — 2026-10-23
+
+Move to discussions replaces Dismiss and hides a question only from live queues; the course forum retains it and its answered state. Answered questions without a precise excerpt show Answered in [lecture title] linking the full recording, with live/processing availability text and no invented timestamp. Send note to lecturer is a single direct action without source checking. Poll feedback & AI processing always shows exact original feedback; useful question rewrites appear separately in the private queue, and punctuation-only changes receive no AI-edited label.

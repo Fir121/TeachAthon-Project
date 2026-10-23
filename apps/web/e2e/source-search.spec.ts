@@ -175,20 +175,10 @@ test("grouped source links, exact pages and explicit preflight controls", async 
     await page
       .getByLabel("What would help?")
       .fill("Binary search sorted sequence needs another explanation.");
-    await page
-      .getByRole("button", { name: "Check course sources", exact: true })
-      .click();
     await expect(
-      page.getByRole("heading", { name: "search-pages.pdf", exact: true }),
-    ).toBeVisible({ timeout: 30000 });
-    await expect(page.locator(".source-excerpt")).toHaveCount(0);
-    expect(
-      (
-        await (
-          await teacher.request.get(`/api/v1/sessions/${sid}/lecturer-queue`)
-        ).json()
-      ).feedback.length,
-    ).toBe(0);
+      page.getByRole("button", { name: "Check course sources", exact: true }),
+    ).toHaveCount(0);
+    await expect(page.locator(".match-card")).toHaveCount(0);
     await page.getByRole("button", { name: "Send note to lecturer" }).click();
     await expect(page.getByText(/Note sent/)).toBeVisible();
   } finally {

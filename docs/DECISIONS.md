@@ -90,3 +90,9 @@
 - Question creation uses a stable submission UUID for retry deduplication. Only complete warning-free empty searches auto-post after the user chooses Post question; matches and failures keep confirmation.
 - Authors alone edit wording; lecturers retain moderation/deletion/resolution. Separate edit/delete capabilities are returned by the server. Open discussion lists/replies refresh every two seconds and live events invalidate caches.
 - Slide uploads are available inside Create lecture; rendering readiness suffices while OCR/indexing continues. Fullscreen reserves visible control/annotation toolbars and supports exit/Escape.
+
+## Owner follow-up fixes — 2026-10-23
+
+- Dismiss means Move to discussions, not removal. A separate discussion-only flag hides it from live queues while retaining forum/search visibility, original privacy, session context and resolution. Old dismissed records are recovered; actual deletes stay deleted.
+- Answered questions retain a whole-lecture recording link independently of AI excerpt success. Precise clips take precedence; the fallback has no fabricated timestamp and labels live/processing states honestly. Missing/disabled/failed recordings produce no fake playback.
+- Feedback notes send directly, without source checks/proofs. The lecturer feedback panel shows the original text, while a useful derived question and its edit label stay in the private queue. General feedback never gets rewritten, and cosmetic punctuation/case/spacing edits are ignored. Existing cosmetic feedback derivatives are repaired without altering originals/human edits.

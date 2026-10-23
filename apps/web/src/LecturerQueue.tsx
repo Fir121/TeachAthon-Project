@@ -139,19 +139,27 @@ export default function LecturerQueue({ sessionId }: { sessionId: string }) {
             <p className="small">
               <strong>{f.author}</strong> · Lecturers only
             </p>
-            <span className="eyebrow">
-              {f.classification}
-              {f.ai_modified ? " · AI edited" : ""}
-            </span>
-            <p>{f.text_rewritten || f.text_original}</p>
-            {f.ai_modified && (
-              <details>
-                <summary>Original wording</summary>
-                <p>{f.text_original}</p>
-              </details>
+            <span className="eyebrow">Original feedback</span>
+            <p className="feedback-original">{f.text_original}</p>
+            <p className="muted small">
+              {f.linked_question_id
+                ? "Question sent to the private queue"
+                : f.classification === "unclassified"
+                  ? "Awaiting classification"
+                  : "Feedback"}
+            </p>
+            {!f.linked_question_id && (
+              <button
+                className="text-button"
+                disabled={routeFeedback.isPending}
+                onClick={() => routeFeedback.mutate(f.id)}
+              >
+                Send to private question queue
+              </button>
             )}
           </div>
         ))}
+        <Failure error={routeFeedback.error} />
         {q.data?.ai_jobs
           .filter((j) => j.status === "failed" || j.status === "queued")
           .map((j, i) => (

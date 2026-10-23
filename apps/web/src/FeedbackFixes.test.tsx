@@ -1,0 +1,198 @@
+import { render, screen, fireEvent, cleanup } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { MemoryRouter } from "react-router-dom";
+import { afterEach, expect, test, vi } from "vitest";
+import FeedbackNote from "./FeedbackNote";
+import LecturerQueue from "./LecturerQueue";
+import { QuestionCard, type Question } from "./Questions";
+
+function wrap(ui: React.ReactNode) {
+  return render(
+    <QueryClientProvider
+      client={
+        new QueryClient({ defaultOptions: { queries: { retry: false } } })
+      }
+    >
+      <MemoryRouter>{ui}</MemoryRouter>
+    </QueryClientProvider>,
+  );
+}
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
+
+test("send note bypasses source search and keeps the student's exact text", async () => {
+  const fetcher = vi
+    .fn()
+    .mockResolvedValue(
+      new Response(JSON.stringify({ status: "received" }), { status: 202 }),
+    );
+  vi.stubGlobal("fetch", fetcher);
+  wrap(<FeedbackNote pollId="poll" />);
+  fireEvent.click(screen.getByText("Add a note for the lecturer"));
+  fireEvent.change(screen.getByLabelText("What would help?"), {
+    target: { value: "I like this course" },
+  });
+  fireEvent.click(
+    screen.getByRole("button", { name: "Send note to lecturer" }),
+  );
+  await screen.findByText(/Note sent/);
+  expect(fetcher).toHaveBeenCalledTimes(1);
+  expect(fetcher.mock.calls[0][0]).toBe("/api/v1/polls/poll/feedback");
+  expect(JSON.parse(fetcher.mock.calls[0][1].body)).toEqual({
+    text: "I like this course",
+  });
+  expect(screen.queryByText("Check course sources")).not.toBeInTheDocument();
+});
+
+test("failed direct note retains the draft for retry", async () => {
+  const fetcher = vi
+    .fn()
+    .mockResolvedValueOnce(
+      new Response(JSON.stringify({ message: "Try sending again" }), {
+        status: 503,
+      }),
+    )
+    .mockResolvedValueOnce(
+      new Response(JSON.stringify({ status: "received" }), { status: 202 }),
+    );
+  vi.stubGlobal("fetch", fetcher);
+  wrap(<FeedbackNote pollId="p" />);
+  fireEvent.click(screen.getByText("Add a note for the lecturer"));
+  fireEvent.change(screen.getByLabelText("What would help?"), {
+    target: { value: "Please slow down" },
+  });
+  fireEvent.click(
+    screen.getByRole("button", { name: "Send note to lecturer" }),
+  );
+  await screen.findByText("Try sending again");
+  expect(screen.getByLabelText("What would help?")).toHaveValue(
+    "Please slow down",
+  );
+  fireEvent.click(
+    screen.getByRole("button", { name: "Send note to lecturer" }),
+  );
+  await screen.findByText(/Note sent/);
+  expect(fetcher).toHaveBeenCalledTimes(2);
+});
+
+test("feedback panel always shows the original, separately from the derived question", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          groups: [],
+          feedback: [
+            {
+              id: "f",
+              author: "Learner",
+              text_original:
+                "I like the course but I am confused about halving",
+              text_rewritten: "Why does binary search halve the interval?",
+              classification: "question",
+              ai_modified: true,
+              linked_question_id: "q",
+            },
+          ],
+          ai_jobs: [],
+        }),
+      ),
+    ),
+  );
+  wrap(<LecturerQueue sessionId="session" />);
+  fireEvent.click(screen.getByText("Poll feedback & AI processing"));
+  expect(
+    await screen.findByText(
+      "I like the course but I am confused about halving",
+    ),
+  ).toBeVisible();
+  expect(
+    screen.queryByText("Why does binary search halve the interval?"),
+  ).not.toBeInTheDocument();
+  expect(screen.queryByText(/AI edited/)).not.toBeInTheDocument();
+  expect(screen.getByText("Question sent to the private queue")).toBeVisible();
+});
+
+const question: Question = {
+  id: "q",
+  text: "Why is search logarithmic?",
+  original: null,
+  ai_modified: false,
+  author: "Student",
+  anonymous: false,
+  visibility: "public",
+  state: "answered",
+  can_edit: false,
+  can_delete: false,
+  votes: 0,
+  my_vote: false,
+  session_id: "session",
+  created_at: "",
+  match: { state: "unavailable" },
+  recording_answer: {
+    title: "Search lecture",
+    url: "/recordings/session",
+    state: "ready",
+  },
+};
+
+test("answered questions offer the whole recording without inventing an exact timestamp", () => {
+  wrap(
+    <QuestionCard
+      question={question}
+      teacher={false}
+      open={false}
+      onOpen={() => {}}
+    />,
+  );
+  expect(screen.getByRole("link", { name: "Search lecture" })).toHaveAttribute(
+    "href",
+    "/recordings/session",
+  );
+  expect(
+    screen.getByText(/an exact answer timestamp is not available/),
+  ).toBeVisible();
+  expect(
+    screen.queryByRole("link", { name: /Suggested recording excerpt/ }),
+  ).not.toBeInTheDocument();
+});
+
+test("a precise excerpt takes precedence over the whole-lecture fallback", () => {
+  wrap(
+    <QuestionCard
+      question={{
+        ...question,
+        match: { state: "ready", url: "/recordings/session?t=5000" },
+      }}
+      teacher={false}
+      open={false}
+      onOpen={() => {}}
+    />,
+  );
+  expect(
+    screen.getByRole("link", { name: /Suggested recording excerpt/ }),
+  ).toHaveAttribute("href", "/recordings/session?t=5000");
+  expect(
+    screen.queryByRole("link", { name: "Search lecture" }),
+  ).not.toBeInTheDocument();
+});
+
+test("an answered question without recording does not promise a pending excerpt", () => {
+  wrap(
+    <QuestionCard
+      question={{
+        ...question,
+        recording_answer: null,
+        match: { state: "pending" },
+      }}
+      teacher={false}
+      open={false}
+      onOpen={() => {}}
+    />,
+  );
+  expect(screen.getByText("Answered by lecturer")).toBeVisible();
+  expect(screen.queryByRole("link")).not.toBeInTheDocument();
+  expect(screen.queryByText(/excerpt pending/)).not.toBeInTheDocument();
+});

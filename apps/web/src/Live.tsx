@@ -406,11 +406,7 @@ export function PollCard({
       )}
       <Failure error={vote.error} />
       {!teacher && poll.status === "open" && courseId && sessionId && (
-        <FeedbackNote
-          courseId={courseId}
-          sessionId={sessionId}
-          pollId={poll.id}
-        />
+        <FeedbackNote pollId={poll.id} />
       )}
     </section>
   );

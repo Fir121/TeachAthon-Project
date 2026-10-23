@@ -1,58 +1,34 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { api, useAction } from "./api";
-import { MatchCards, type Preflight } from "./Questions";
 import { Failure } from "./CoursePage";
-export default function FeedbackNote({
-  courseId,
-  sessionId,
-  pollId,
-}: {
-  courseId: string;
-  sessionId: string;
-  pollId: string;
-}) {
-  const [text, setText] = useState(""),
-    [result, setResult] = useState<Preflight | null>(null),
-    [attempted, setAttempted] = useState(false);
-  const payload = {
-    text,
-    purpose: "feedback",
-    session_id: sessionId,
-  };
-  const search = useAction(() =>
-    api<Preflight>(`/courses/${courseId}/questions/preflight`, payload),
-  );
-  const send = useAction(async () => {
-    const proof =
-      result ||
-      (await api<Preflight>(
-        `/courses/${courseId}/questions/preflight`,
-        payload,
-      ));
-    return api(`/polls/${pollId}/feedback`, {
-      text,
-      preflight_token: proof.preflight_token,
-    });
-  });
+
+export default function FeedbackNote({ pollId }: { pollId: string }) {
+  const [text, setText] = useState("");
+  const busy = useRef(false);
+  const send = useAction(() => api(`/polls/${pollId}/feedback`, { text }));
   return (
     <details className="spaced">
       <summary>Add a note for the lecturer</summary>
       <form
         onSubmit={(e) => {
           e.preventDefault();
-          setAttempted(true);
-          search.mutate(undefined, { onSuccess: setResult });
+          if (busy.current || send.isSuccess) return;
+          busy.current = true;
+          void send
+            .mutateAsync()
+            .catch(() => {})
+            .finally(() => {
+              busy.current = false;
+            });
         }}
       >
         <label>
           What would help?
           <textarea
-            disabled={search.isPending || send.isPending}
+            disabled={send.isPending}
             value={text}
             onChange={(e) => {
               setText(e.target.value);
-              setResult(null);
-              setAttempted(false);
               send.reset();
             }}
             minLength={3}
@@ -61,41 +37,20 @@ export default function FeedbackNote({
           />
         </label>
         <p className="muted small">
-          Lecturers can see your name and note. Notes and any questions inferred
-          from them stay lecturer-only. We check course sources first.
+          Lecturers can see your name and original note. Notes and any questions
+          inferred from them stay lecturer-only.
         </p>
-        <button className="secondary" disabled={search.isPending}>
-          {search.isPending ? "Checking sources…" : "Check course sources"}
-        </button>
-      </form>
-      <Failure error={search.error} />
-      {search.isPending && (
-        <p role="status" className="muted small spaced">
-          Checking course sources. This can take up to 30 seconds.
-        </p>
-      )}
-      {result && (
-        <>
-          <p className="muted small spaced">
-            {result.error ||
-              "You can send your note even if a source is relevant."}
-          </p>
-          <MatchCards matches={result.matches} />
-        </>
-      )}
-      {attempted && !search.isPending && (
         <button
           className="primary spaced"
           disabled={send.isPending || send.isSuccess}
-          onClick={() => send.mutate()}
         >
           {send.isPending ? "Sending…" : "Send note to lecturer"}
         </button>
-      )}
+      </form>
       {send.isSuccess && (
-        <p className="muted small" role="status">
-          Note sent. If classified as a question, it enters the lecturer’s
-          private queue.
+        <p className="muted small spaced" role="status">
+          Note sent. Your original feedback is saved; if it contains a question,
+          that question enters the lecturer’s private queue.
         </p>
       )}
       <Failure error={send.error} />

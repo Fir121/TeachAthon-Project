@@ -4135,17 +4135,12 @@
             "maxLength": 8000,
             "minLength": 3,
             "title": "Text"
-          },
-          "preflight_token": {
-            "type": "string",
-            "maxLength": 2000,
-            "title": "Preflight Token"
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "required": [
-          "text",
-          "preflight_token"
+          "text"
         ],
         "title": "FeedbackInput"
       },

@@ -104,10 +104,7 @@ def test_named_feedback_manual_routing_and_legacy_identity_preservation(room):
     data = {"text": "Please slow down this explanation", "purpose": "feedback", "session_id": sid}
     proof = s.post(f"/api/v1/courses/{cid}/questions/preflight", json=data).json()["preflight_token"]
     assert s.post(f"/api/v1/courses/{cid}/questions", json={**data, "preflight_token": proof}).status_code == 409
-    assert (
-        s.post(f"/api/v1/polls/{pid}/feedback", json={"text": data["text"], "preflight_token": proof}).status_code
-        == 202
-    )
+    assert s.post(f"/api/v1/polls/{pid}/feedback", json={"text": data["text"]}).status_code == 202
     with factory() as db:
         feedback = db.scalar(select(Feedback))
         assert feedback.author_id == student["id"]

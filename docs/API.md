@@ -25,7 +25,7 @@ Prefix `/api/v1`. JSON request/response; consistent errors `{code,message,detail
 
 ## Polls and questions
 - `POST /sessions/{sid}/polls` lecturer, `GET /sessions/{sid}/polls`, `POST /polls/{pid}/vote` student, `POST /polls/{pid}/close` lecturer, `GET /polls/{pid}/results` lecturer aggregates only
-- `POST /polls/{pid}/feedback` classified in background if needed; secure original/rewrite semantics
+- `POST /polls/{pid}/feedback` accepts `{text}` directly, with no preflight; background classification preserves original text and may derive a private question
 - `POST /courses/{id}/questions/preflight` with text, optional session_id/submission_id and purpose question|feedback; returns resource matches and **public-only existing-question suggestions**, transient preflight token if useful; asynchronous AI with bound timeout/failure state
 - `POST /courses/{id}/questions` with preflight token or signed explicit failed-attempt marker; `GET /courses/{id}/questions?scope=live|forum&sort=...`; `GET/PATCH/DELETE /questions/{qid}` permissions
 - `POST/DELETE /questions/{qid}/vote` public only; `POST /questions/{qid}/answer`, `POST /questions/{qid}/resolve`, `POST /questions/{qid}/dismiss`; `POST /questions/{qid}/comments`; `GET /questions/{qid}/answers` permissions.
@@ -51,3 +51,5 @@ Audio ingest path: `GET /ws/sessions/{sid}/audio` lecturer-only, receives PCM fr
 - Course search and preflight return typed `matches` source groups with stable parent ID, kind, title, primary URL and deduplicated page/time `locations`. No internal chunk text/excerpts are exposed. The eight-result limit applies after grouping; preflight proof fields remain unchanged. See AI_WORKFLOW.md and the generated OpenAPI contract.
 
 Current course search is the all-keyword endpoint (`q`, 1–200 characters), with local English stemming and proximity qualification. Question and poll-note preflight keep hybrid natural-question retrieval. GET/POST/DELETE picture endpoints are `/auth/me/avatar`, `/courses/{cid}/banner` and `/lectures/{lid}/banner`, under `/api/v1`; own-account or course/lecturer permissions apply. See the implemented contract for normalized image limits and URLs.
+
+Follow-up 0013: `/questions/{qid}/dismiss` sets `discussion_only=true`, preserving `state` and privacy. Session lists exclude those records; course lists/search retain them. Question JSON includes `discussion_only` and nullable `recording_answer:{title,url,state:live|processing|ready}` for answered lecture questions. Full-recording links have no exact timestamp; `match` remains the independent suggested-excerpt result.

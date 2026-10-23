@@ -12,6 +12,7 @@ from .models import LiveSession, Lecture, Resource, Transcript, Poll, Question, 
 from .security import DB, Actor, member
 from .classroom import live, emit, offset, open_poll
 from .materials import require
+from .feedback import question_rewrite
 from .questions import question_access, question_json, question_event, visible_questions, lexical_score, words
 
 router = APIRouter(prefix="/api/v1")
@@ -158,7 +159,7 @@ def cosine(a, b):
 
 async def group_question(db, qid):
     q = db.get(Question, qid)
-    if not q or q.state != "open":
+    if not q or q.state != "open" or q.discussion_only:
         return
     if q.cluster_id and db.get(Cluster, q.cluster_id).manual:
         return
@@ -170,6 +171,7 @@ async def group_question(db, qid):
                 Question.session_id == q.session_id,
                 Question.id != qid,
                 Question.state == "open",
+                Question.discussion_only.is_(False),
             )
             .order_by(Question.created_at.desc())
             .limit(80)
@@ -214,13 +216,16 @@ async def classify_feedback(db, fid):
     if not f:
         return
     result = await OpenAIText().structured(
-        "Classify this classroom feedback. Only lightly clarify wording without changing the meaning; return original wording if uncertain. "
-        + f.text_original,
+        "Classify this classroom note as question or feedback. Opinions, praise, pacing and general classroom feedback "
+        "must retain the original text EXACTLY in soft_rewrite; do not add punctuation or polish them. "
+        "Only for an actual question or request for explanation, lightly clarify the question without changing its meaning. "
+        "Do not convert ordinary feedback into a question. Keep original wording when it is already clear; "
+        "never change text merely to add a full stop, capitalization, or formatting. Note: " + f.text_original,
         Classification,
     )
     f.classification = result.classification
-    f.text_rewritten = result.soft_rewrite[:8000]
-    f.ai_modified = f.text_rewritten != f.text_original
+    f.text_rewritten = question_rewrite(f.text_original, result.soft_rewrite, result.classification)
+    f.ai_modified = f.text_rewritten is not None
     poll = db.get(Poll, f.poll_id)
     s = db.get(LiveSession, poll.session_id)
     if result.classification == "question" and not f.linked_question_id:
@@ -229,7 +234,7 @@ async def classify_feedback(db, fid):
             course_id=s.course_id,
             session_id=s.id,
             body_original=f.text_original,
-            body_display=f.text_rewritten,
+            body_display=f.text_rewritten or f.text_original,
             ai_modified=f.ai_modified,
             anonymous=f.author_id is None,
             author_id=f.author_id,
@@ -240,6 +245,7 @@ async def classify_feedback(db, fid):
         f.linked_question_id = q.id
         enqueue_index(db, s.course_id, q.id, "group_questions")
         question_event(db, q, "question.created")
+    emit(db, s, "feedback.updated", audience="lecturer")
     db.commit()
 
 
@@ -409,7 +415,7 @@ def topics(sid: str, db: DB, user: Actor):
 
 class FeedbackInput(BaseModel):
     text: str = Field(min_length=3, max_length=8000)
-    preflight_token: str = Field(max_length=2000)
+    model_config = ConfigDict(extra="forbid")
 
 
 @router.post("/polls/{pid}/feedback", status_code=202)
@@ -418,16 +424,6 @@ def submit_feedback(pid: str, data: FeedbackInput, db: DB, user: Actor):
     s, m = live(db, p.session_id, user, active=True, lock=True)
     if p.status != "open":
         raise HTTPException(409, "This poll is closed.")
-    from .questions import signer, fingerprint, PreflightInput
-    from itsdangerous import BadSignature
-
-    try:
-        proof = signer().loads(data.preflight_token, max_age=600)
-        original = PreflightInput(text=data.text, purpose="feedback", session_id=s.id)
-        if proof["fingerprint"] != fingerprint(s.course_id, original) or proof.get("actor_id") != user.id:
-            raise BadSignature("mismatch")
-    except (BadSignature, KeyError):
-        raise HTTPException(409, "Check course sources for this note before sending.")
     f = Feedback(poll_id=pid, text_original=data.text, author_id=user.id)
     db.add(f)
     db.flush()

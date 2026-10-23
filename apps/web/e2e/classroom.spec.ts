@@ -58,90 +58,109 @@ test("lecturer and mobile student share slides, polls and named questions and le
     .getByRole("link", { name: new RegExp(`Browser course ${suffix}`) })
     .click();
   const cid = t.url().split("/courses/")[1].split("/")[0];
-  await teacher.request.post(`/api/v1/courses/${cid}/members`, {
-    data: { email: `student-${suffix}@example.com` },
-  });
-  await t.getByRole("link", { name: "Resources", exact: true }).click();
-  await t
-    .getByLabel("Upload resources")
-    .setInputFiles(path.resolve("e2e/deck.pdf"));
-  await expect(t.getByText("ready", { exact: true })).toBeVisible({
-    timeout: 15000,
-  });
-  await t.getByRole("link", { name: "Lectures", exact: true }).click();
-  await t.getByRole("button", { name: "Create lecture", exact: true }).click();
-  await t.getByLabel("Lecture title").fill("Browser search lecture");
-  await t.getByLabel("Prepared slide deck").selectOption({ label: "deck.pdf" });
-  await t
-    .getByRole("button", { name: "Create lecture", exact: true })
-    .last()
-    .click();
-  await t.getByRole("link", { name: "Open lecture" }).click();
-  await t.getByRole("button", { name: "Start lecture", exact: true }).click();
-  await expect(t.getByText("Connected", { exact: true })).toBeVisible();
-  const session = t.url().split("/sessions/")[1];
-  await s.goto(`/sessions/${session}`);
-  await expect(s.getByText("Connected", { exact: true })).toBeVisible();
-  await t.getByRole("button", { name: "Next slide" }).click();
-  await expect(s.getByText("Slide 2 / 2")).toBeVisible();
-  await t.getByRole("button", { name: "Open understanding poll" }).click();
-  await s.getByRole("button", { name: /Somewhat understood/ }).click();
-  await expect(s.getByText(/Response saved/)).toBeVisible();
-  await expect(t.getByText("1 response · aggregate only")).toBeVisible();
-  await s.getByRole("button", { name: /Unsure or confused/ }).click();
-  await s.reload();
-  await expect(
-    s.getByRole("button", { name: /Unsure or confused/ }),
-  ).toHaveAttribute("aria-pressed", "true");
-  await s.getByRole("button", { name: "Ask a question", exact: true }).click();
-  await s
-    .getByLabel("Your question")
-    .fill("Why does binary search halve the search space?");
-  await s.getByRole("button", { name: "Post question" }).click();
-  await s.getByRole("button", { name: /Post (my question )?anyway/ }).click();
-  await expect(
-    t.getByRole("button", {
-      name: "Why does binary search halve the search space?",
-      exact: true,
-    }),
-  ).toBeVisible();
-  await t.getByRole("button", { name: "Mark answered" }).click();
-  await expect(
-    s.getByText("Answered by lecturer", { exact: true }),
-  ).toBeVisible();
-  await s.getByText("Add a note for the lecturer", { exact: true }).click();
-  await s
-    .getByLabel("What would help?")
-    .fill("Private accommodation discussion");
-  await s
-    .getByRole("button", { name: "Check course sources", exact: true })
-    .click();
-  await s
-    .getByRole("button", { name: "Send note to lecturer", exact: true })
-    .click();
-  await expect(s.getByText(/Note sent/)).toBeVisible();
-  await t.getByText("Poll feedback & AI processing", { exact: true }).click();
-  await expect(
-    t.getByText("Private accommodation discussion", { exact: true }),
-  ).toBeVisible();
-  await expect(
-    t.locator(".reply").filter({ hasText: "Private accommodation discussion" }),
-  ).toContainText("Browser student");
-  await expect(
-    s
-      .locator(".question-feed")
-      .getByText("Private accommodation discussion", { exact: true }),
-  ).toHaveCount(0);
-  await t.screenshot({ path: "test-results/lecturer.png", fullPage: true });
-  await s.screenshot({
-    path: "test-results/student-mobile.png",
-    fullPage: true,
-  });
-  expect(
-    (await teacher.request.delete(`/api/v1/courses/${cid}`)).status(),
-  ).toBe(204);
-  await teacher.close();
-  await student.close();
+  try {
+    await teacher.request.post(`/api/v1/courses/${cid}/members`, {
+      data: { email: `student-${suffix}@example.com` },
+    });
+    await t.getByRole("link", { name: "Resources", exact: true }).click();
+    await t
+      .getByLabel("Upload resources")
+      .setInputFiles(path.resolve("e2e/deck.pdf"));
+    await expect(t.getByText("ready", { exact: true })).toBeVisible({
+      timeout: 15000,
+    });
+    await t.getByRole("link", { name: "Lectures", exact: true }).click();
+    await t
+      .getByRole("button", { name: "Create lecture", exact: true })
+      .click();
+    await t.getByLabel("Lecture title").fill("Browser search lecture");
+    await t
+      .getByLabel("Prepared slide deck")
+      .selectOption({ label: "deck.pdf" });
+    await t
+      .getByRole("button", { name: "Create lecture", exact: true })
+      .last()
+      .click();
+    await t.getByRole("link", { name: "Open lecture" }).click();
+    await t.getByRole("button", { name: "Start lecture", exact: true }).click();
+    await expect(t.getByText("Connected", { exact: true })).toBeVisible();
+    const session = t.url().split("/sessions/")[1];
+    await s.goto(`/sessions/${session}`);
+    await expect(s.getByText("Connected", { exact: true })).toBeVisible();
+    await t.getByRole("button", { name: "Next slide" }).click();
+    await expect(s.getByText("Slide 2 / 2")).toBeVisible();
+    await t.getByRole("button", { name: "Open understanding poll" }).click();
+    await s.getByRole("button", { name: /Somewhat understood/ }).click();
+    await expect(s.getByText(/Response saved/)).toBeVisible();
+    await expect(t.getByText("1 response · aggregate only")).toBeVisible();
+    await s.getByRole("button", { name: /Unsure or confused/ }).click();
+    await s.reload();
+    await expect(
+      s.getByRole("button", { name: /Unsure or confused/ }),
+    ).toHaveAttribute("aria-pressed", "true");
+    await s
+      .getByRole("button", { name: "Ask a question", exact: true })
+      .click();
+    await s
+      .getByLabel("Your question")
+      .fill("Why does binary search halve the search space?");
+    const sourceCheck = s.waitForResponse(
+      (response) =>
+        response.url().endsWith("/questions/preflight") &&
+        response.request().method() === "POST",
+    );
+    await s.getByRole("button", { name: "Post question" }).click();
+    const result = await (await sourceCheck).json();
+    // Slide rendering can finish before indexing; a successful empty search posts automatically.
+    if (result.status !== "complete" || result.error || result.matches.length) {
+      await s
+        .getByRole("button", { name: /Post (my question )?anyway/ })
+        .click();
+    }
+    await expect(
+      t.getByRole("button", {
+        name: "Why does binary search halve the search space?",
+        exact: true,
+      }),
+    ).toBeVisible();
+    await t.getByRole("button", { name: "Mark answered" }).click();
+    await expect(
+      s.getByText("Answered by lecturer", { exact: true }),
+    ).toBeVisible();
+    await s.getByText("Add a note for the lecturer", { exact: true }).click();
+    await s
+      .getByLabel("What would help?")
+      .fill("Private accommodation discussion");
+    await s
+      .getByRole("button", { name: "Send note to lecturer", exact: true })
+      .click();
+    await expect(s.getByText(/Note sent/)).toBeVisible();
+    await t.getByText("Poll feedback & AI processing", { exact: true }).click();
+    await expect(
+      t.getByText("Private accommodation discussion", { exact: true }),
+    ).toBeVisible();
+    await expect(
+      t
+        .locator(".reply")
+        .filter({ hasText: "Private accommodation discussion" }),
+    ).toContainText("Browser student");
+    await expect(
+      s
+        .locator(".question-feed")
+        .getByText("Private accommodation discussion", { exact: true }),
+    ).toHaveCount(0);
+    await t.screenshot({ path: "test-results/lecturer.png", fullPage: true });
+    await s.screenshot({
+      path: "test-results/student-mobile.png",
+      fullPage: true,
+    });
+  } finally {
+    expect(
+      (await teacher.request.delete(`/api/v1/courses/${cid}`)).status(),
+    ).toBe(204);
+    await teacher.close();
+    await student.close();
+  }
 });
 
 test("real browser microphone chunks assemble to seekable protected recording", async ({
@@ -450,12 +469,22 @@ test("real browser microphone chunks assemble to seekable protected recording", 
       await expect(page.locator(".transcript-panel")).toContainText(
         /binary|search/i,
       );
+      // The browser may stop after the first real speech window. Search words actually captured,
+      // rather than assuming a later sentence from the fixture was already spoken.
+      const captured = await (
+        await learner.request.get(`/api/v1/sessions/${sid}/transcript`)
+      ).json();
+      const capturedWord = captured.some((segment: any) =>
+        /\bbinary\b/i.test(segment.text),
+      )
+        ? "binary"
+        : "search";
       await expect
         .poll(
           async () => {
             const result = await (
               await learner.request.get(
-                `/api/v1/courses/${cid}/search?q=sorted%20interval`,
+                `/api/v1/courses/${cid}/search?q=${capturedWord}`,
               )
             ).json();
             return result.matches?.some(

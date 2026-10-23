@@ -57,7 +57,6 @@ def safe_scope(cid):
             Question.id == SourceChunk.question_id,
             Question.course_id == cid,
             Question.visibility == "public",
-            Question.state != "dismissed",
         )
         .exists()
     )
@@ -204,7 +203,7 @@ def index_question(db, job):
 
     question = db.get(Question, job.target_id)
     chunks = []
-    if question and question.visibility == "public" and question.state != "dismissed":
+    if question and question.visibility == "public":
         sources = [(question.body_display, None)]
         sources += [
             (a.body, a)
@@ -393,12 +392,7 @@ def _keyword_search(db, cid, query, deadline):
     sessions = {s.id: s for s in db.scalars(select(LiveSession).where(LiveSession.course_id == cid))}
     lectures = {l.id: l.title for l in db.scalars(select(Lecture).where(Lecture.course_id == cid))}
     questions = {
-        q.id: q
-        for q in db.scalars(
-            select(Question).where(
-                Question.course_id == cid, Question.visibility == "public", Question.state != "dismissed"
-            )
-        )
+        q.id: q for q in db.scalars(select(Question).where(Question.course_id == cid, Question.visibility == "public"))
     }
     hits, unlocated, indexed = [], set(), set()
     statement = select(SourceChunk).where(scope)
@@ -456,11 +450,7 @@ def _keyword_search(db, cid, query, deadline):
     # Recheck current visibility/exclusions, including changes while scanning large courses.
     allowed = set(db.scalars(select(SourceChunk.id).where(scope)))
     public_questions = set(
-        db.scalars(
-            select(Question.id).where(
-                Question.course_id == cid, Question.visibility == "public", Question.state != "dismissed"
-            )
-        )
+        db.scalars(select(Question.id).where(Question.course_id == cid, Question.visibility == "public"))
     )
     hits = [
         (chunk, score)
@@ -535,11 +525,7 @@ def _retrieve(db, cid, query, deadline):
             score = 0.6 * lexical + 0.35 * max(0, sim) + 0.05 * min(1, fts.get(chunk.id, 0))
             hits.append((chunk, score))
     indexed_questions = {c.question_id for c in candidates.values() if c.question_id}
-    for question in db.scalars(
-        select(Question).where(
-            Question.course_id == cid, Question.visibility == "public", Question.state != "dismissed"
-        )
-    ):
+    for question in db.scalars(select(Question).where(Question.course_id == cid, Question.visibility == "public")):
         score = lexical_score(query, question.body_display)
         if (
             question.id not in indexed_questions

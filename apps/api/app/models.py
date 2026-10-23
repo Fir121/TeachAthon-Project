@@ -203,6 +203,7 @@ class Question(Base):
     anonymous: Mapped[bool]
     visibility: Mapped[str]
     state: Mapped[str] = mapped_column(default="open")
+    discussion_only: Mapped[bool] = mapped_column(default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     edited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     match_json: Mapped[dict] = mapped_column(JSON, default=lambda: {"state": "unavailable"})

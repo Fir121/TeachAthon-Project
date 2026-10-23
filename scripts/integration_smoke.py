@@ -61,9 +61,7 @@ def main(audio):
             print('Real embedding/LLM grouping of named question variants and lecturer group resolution: PASS')
             pid=t.post(f'/sessions/{sid}/polls',json={}).json()['id']
             text='Could you explain why the search interval must be sorted?'
-            data={'text':text,'purpose':'feedback','session_id':sid}
-            proof=s.post(f'/courses/{cid}/questions/preflight',json=data).json()['preflight_token']
-            s.post(f'/polls/{pid}/feedback',json={'text':text,'preflight_token':proof}).raise_for_status()
+            s.post(f'/polls/{pid}/feedback',json={'text':text}).raise_for_status()
             wait(lambda:any(f['classification']=='question' and f['linked_question_id'] for f in t.get(f'/sessions/{sid}/lecturer-queue').json()['feedback']))
             assert all(q['visibility']=='public' for q in s.get(f'/sessions/{sid}/snapshot').json()['questions'])
             print('Real feedback classification with named lecturer-only routing: PASS')

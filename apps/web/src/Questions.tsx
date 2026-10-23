@@ -46,6 +46,12 @@ export type Question = {
   state: string;
   can_edit: boolean;
   can_delete: boolean;
+  discussion_only?: boolean;
+  recording_answer?: {
+    title: string;
+    url: string;
+    state: "live" | "processing" | "ready";
+  } | null;
   votes: number | null;
   my_vote: boolean;
   session_id: string | null;
@@ -533,6 +539,7 @@ export function QuestionCard({
                 Answered by lecturer
               </span>
             )}
+            {q.discussion_only && <span>Moved to discussions</span>}
             {q.ai_modified && <span>AI edited</span>}
           </div>
           {editing ? (
@@ -638,9 +645,25 @@ export function QuestionCard({
               )}
             </div>
           )}
-          {q.state === "answered" && q.match.state === "pending" && (
-            <p className="muted small">Answered · recording excerpt pending</p>
-          )}
+          {q.state === "answered" &&
+            q.match.state !== "ready" &&
+            q.recording_answer && (
+              <div className="spaced">
+                <p>
+                  Answered in{" "}
+                  <a className="text-button" href={q.recording_answer.url}>
+                    {q.recording_answer.title}
+                  </a>
+                </p>
+                <p className="muted small">
+                  {q.recording_answer.state === "live"
+                    ? "The recording will be available after the lecture."
+                    : q.recording_answer.state === "processing"
+                      ? "Recording processing. The full lecture will be linked here when ready."
+                      : "Full lecture recording · an exact answer timestamp is not available."}
+                </p>
+              </div>
+            )}
           <div className="question-actions">
             {(teacher || q.visibility === "public") && (
               <button onClick={onOpen}>
@@ -650,8 +673,13 @@ export function QuestionCard({
             {teacher && q.state !== "answered" && (
               <button onClick={() => resolve.mutate()}>Mark answered</button>
             )}
-            {teacher && (
-              <button onClick={() => dismiss.mutate()}>Dismiss</button>
+            {teacher && q.session_id && !q.discussion_only && (
+              <button
+                disabled={dismiss.isPending}
+                onClick={() => dismiss.mutate()}
+              >
+                Move to discussions
+              </button>
             )}
             {q.can_edit && (
               <button onClick={() => setEditing(true)}>Edit</button>

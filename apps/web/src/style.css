@@ -1712,3 +1712,7 @@ form > .error {
 .image-editor > label {
   margin-bottom: 12px;
 }
+
+.feedback-original {
+  white-space: pre-wrap;
+}

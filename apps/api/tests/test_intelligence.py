@@ -105,7 +105,7 @@ def test_topic_checkpoint_opens_exactly_one_automatic_poll(room, monkeypatch):
         assert len(list(db.scalars(select(Poll).where(Poll.session_id == sid)))) == 1
 
 
-def test_feedback_requires_preflight_and_routes_named_but_private(room, monkeypatch):
+def test_feedback_sends_directly_and_routes_named_but_private(room, monkeypatch):
     from app.models import Feedback
     from app.intelligence import classify_feedback, Classification
     from sqlalchemy import select
@@ -113,12 +113,7 @@ def test_feedback_requires_preflight_and_routes_named_but_private(room, monkeypa
     t, s, o, factory, cid, lid, sid, _ = room
     pid = t.post(f"/api/v1/sessions/{sid}/polls", json={}).json()["id"]
     text = "Could you explain the sorted interval invariant?"
-    assert s.post(f"/api/v1/polls/{pid}/feedback", json={"text": text}).status_code == 422
-    proof = s.post(
-        f"/api/v1/courses/{cid}/questions/preflight",
-        json={"text": text, "purpose": "feedback", "session_id": sid},
-    ).json()["preflight_token"]
-    assert s.post(f"/api/v1/polls/{pid}/feedback", json={"text": text, "preflight_token": proof}).status_code == 202
+    assert s.post(f"/api/v1/polls/{pid}/feedback", json={"text": text}).status_code == 202
 
     async def classify(*_):
         return Classification(classification="question", soft_rewrite="Please explain the sorted interval invariant.")

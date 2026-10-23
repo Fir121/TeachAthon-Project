@@ -10,7 +10,7 @@ from typing import Literal
 from uuid import UUID, uuid4
 from sqlalchemy import select, func
 from .config import settings
-from .models import Question, QuestionVote, Answer, Resource, User, LiveSession, Course, now
+from .models import Question, QuestionVote, Answer, Resource, User, LiveSession, Lecture, Course, now
 from .security import DB, Actor, member
 from .materials import require, private_path
 from .classroom import live, emit
@@ -144,11 +144,11 @@ def preflight(cid: str, data: PreflightInput, db: DB, user: Actor):
 
 
 def visible_questions(db, cid, teacher, sid=None, sort="newest", q=""):
-    stmt = select(Question).where(Question.course_id == cid, Question.state != "dismissed")
+    stmt = select(Question).where(Question.course_id == cid)
     if not teacher:
         stmt = stmt.where(Question.visibility == "public")
     if sid:
-        stmt = stmt.where(Question.session_id == sid)
+        stmt = stmt.where(Question.session_id == sid, Question.discussion_only.is_(False))
     if q:
         stmt = stmt.where(Question.body_display.ilike(f"%{q[:150]}%"))
     if sort == "unanswered":
@@ -163,6 +163,23 @@ def visible_questions(db, cid, teacher, sid=None, sort="newest", q=""):
             .desc()
         )
     return list(db.scalars(stmt.order_by(Question.created_at.desc()).limit(200)))
+
+
+def recording_answer(db, q):
+    # Human resolution points to its lecture independently of fallible excerpt matching.
+    if q.state != "answered" or not q.session_id:
+        return None
+    session = db.get(LiveSession, q.session_id)
+    if not session or session.course_id != q.course_id or not session.recording_enabled:
+        return None
+    if session.recording_state in {"disabled", "no_audio", "failed"}:
+        return None
+    lecture = db.get(Lecture, session.lecture_id)
+    return {
+        "url": f"/recordings/{session.id}",
+        "title": lecture.title,
+        "state": "live" if session.state == "live" else "ready" if session.recording_state == "ready" else "processing",
+    }
 
 
 def question_json(db, q, user, teacher):
@@ -184,6 +201,8 @@ def question_json(db, q, user, teacher):
         "author_id": q.author_id if not q.anonymous else None,
         "visibility": q.visibility,
         "state": q.state,
+        "discussion_only": q.discussion_only,
+        "recording_answer": recording_answer(db, q),
         "created_at": q.created_at,
         "can_edit": not q.anonymous and q.author_id == user.id,
         "can_delete": teacher or (not q.anonymous and q.author_id == user.id),
@@ -354,10 +373,11 @@ def resolve(qid: str, db: DB, user: Actor):
 @router.post("/questions/{qid}/dismiss")
 def dismiss(qid: str, db: DB, user: Actor):
     q, m = question_access(db, qid, user, True, lock=True)
-    q.state = "dismissed"
+    q.discussion_only = True
+    q.cluster_id = None
     question_event(db, q, "question.updated")
     db.commit()
-    return {"state": "dismissed"}
+    return {"state": q.state, "discussion_only": True}
 
 
 class AnswerInput(BaseModel):
