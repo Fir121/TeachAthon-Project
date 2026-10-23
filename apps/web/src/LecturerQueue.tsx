@@ -134,13 +134,15 @@ export default function LecturerQueue({ sessionId }: { sessionId: string }) {
       <Failure error={q.error || group.error || resolve.error || split.error} />
       {q.data?.groups.map((g, i) => (
         <div className="queue-group" key={g.id || g.questions[0].id}>
-          <div className="row-between">
-            <strong>{g.canonical_text}</strong>
-            {g.questions.length > 1 && (
-              <span className="status">{g.questions.length} questions</span>
-            )}
-          </div>
-          {g.id && (
+          {g.questions.length > 1 && (
+            <div className="row-between">
+              <strong>{g.canonical_text}</strong>
+              {g.questions.length > 1 && (
+                <span className="status">{g.questions.length} questions</span>
+              )}
+            </div>
+          )}
+          {g.id && g.questions.length > 1 && (
             <div className="actions">
               <button
                 className="text-button"

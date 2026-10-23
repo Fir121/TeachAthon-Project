@@ -14,6 +14,7 @@ from .models import Question, QuestionVote, Answer, Resource, User, LiveSession,
 from .security import DB, Actor, member
 from .materials import require, private_path
 from .classroom import live, emit
+from .question_groups import dissolve_small_groups
 
 router = APIRouter(prefix="/api/v1")
 
@@ -330,7 +331,9 @@ def delete_question(qid: str, db: DB, user: Actor):
     if m.role != "lecturer" and (q.anonymous or q.author_id != user.id):
         raise HTTPException(403, "Only named authors or course lecturers can delete this question.")
     question_event(db, q, "question.deleted")
+    previous_cluster = q.cluster_id
     db.delete(q)
+    dissolve_small_groups(db, [previous_cluster])
     db.commit()
 
 
@@ -374,7 +377,9 @@ def resolve(qid: str, db: DB, user: Actor):
 def dismiss(qid: str, db: DB, user: Actor):
     q, m = question_access(db, qid, user, True, lock=True)
     q.discussion_only = True
+    previous_cluster = q.cluster_id
     q.cluster_id = None
+    dissolve_small_groups(db, [previous_cluster])
     question_event(db, q, "question.updated")
     db.commit()
     return {"state": q.state, "discussion_only": True}

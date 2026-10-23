@@ -264,3 +264,34 @@ test("manual grouping is opt-in, cancel clears selection, and saving leaves sele
   expect(JSON.parse(request![1].body)).toEqual({ question_ids: ["q1", "q2"] });
   expect(screen.queryAllByRole("checkbox")).toHaveLength(0);
 });
+
+test("a lone question is an ordinary card even if a stale response still has a group ID", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          groups: [
+            {
+              id: "legacy-singleton",
+              canonical_text: "Old group heading",
+              questions: [{ ...question, state: "open" }],
+            },
+          ],
+          feedback: [],
+          ai_jobs: [],
+        }),
+      ),
+    ),
+  );
+  wrap(<LecturerQueue sessionId="s" />);
+  await screen.findByRole("button", { name: question.text });
+  expect(screen.getByRole("button", { name: "Mark answered" })).toBeVisible();
+  expect(
+    screen.queryByRole("button", { name: "Mark group answered" }),
+  ).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: "Split group" }),
+  ).not.toBeInTheDocument();
+  expect(screen.queryByText("Old group heading")).not.toBeInTheDocument();
+});

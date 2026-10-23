@@ -197,6 +197,43 @@ test("dismissed questions persist, original notes send directly, and answered le
       path: "test-results/queue-grouping-default.png",
       fullPage: true,
     });
+    await queuePanel
+      .getByRole("button", { name: "Split group", exact: true })
+      .click();
+    await expect(
+      queuePanel.getByRole("button", {
+        name: "Mark group answered",
+        exact: true,
+      }),
+    ).toHaveCount(0);
+    await expect(
+      queuePanel.getByRole("button", { name: "Split group", exact: true }),
+    ).toHaveCount(0);
+    await expect(queuePanel.locator(".question-card")).toHaveCount(2);
+    await expect(
+      queuePanel.getByRole("button", { name: "Mark answered", exact: true }),
+    ).toHaveCount(2);
+    await expect(queuePanel.locator(".queue-group > .row-between")).toHaveCount(
+      0,
+    );
+    const splitQueue = await (
+      await teacher.request.get(`/api/v1/sessions/${sid}/lecturer-queue`)
+    ).json();
+    expect(splitQueue.groups).toHaveLength(2);
+    expect(
+      splitQueue.groups.every(
+        (group: any) => group.id === null && group.questions.length === 1,
+      ),
+    ).toBe(true);
+    await t.reload();
+    await expect(queuePanel.locator(".question-card")).toHaveCount(2);
+    await expect(
+      queuePanel.getByRole("button", {
+        name: "Mark group answered",
+        exact: true,
+      }),
+    ).toHaveCount(0);
+    await queuePanel.screenshot({ path: "test-results/queue-after-split.png" });
     const card = t.locator(".question-card").filter({ hasText: deferred.text });
     await card
       .getByRole("button", { name: "Move to discussions", exact: true })

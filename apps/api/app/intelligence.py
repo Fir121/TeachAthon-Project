@@ -13,6 +13,7 @@ from .security import DB, Actor, member
 from .classroom import live, emit, offset, open_poll
 from .materials import require
 from .feedback import question_rewrite, complete_question_text
+from .question_groups import can_auto_group, dissolve_small_groups
 from .questions import question_access, question_json, question_event, visible_questions, lexical_score, words
 
 router = APIRouter(prefix="/api/v1")
@@ -164,10 +165,9 @@ def cosine(a, b):
 
 async def group_question(db, qid):
     q = db.get(Question, qid)
-    if not q or q.state != "open" or q.discussion_only:
+    if not can_auto_group(db, q):
         return
-    if q.cluster_id and db.get(Cluster, q.cluster_id).manual:
-        return
+    course_id, session_id, question_text = q.course_id, q.session_id, q.body_display
     candidates = list(
         db.scalars(
             select(Question)
@@ -177,27 +177,56 @@ async def group_question(db, qid):
                 Question.id != qid,
                 Question.state == "open",
                 Question.discussion_only.is_(False),
+                Question.auto_grouping_disabled.is_(False),
             )
             .order_by(Question.created_at.desc())
             .limit(80)
         )
     )
+    candidates = [candidate for candidate in candidates if can_auto_group(db, candidate)]
     if not candidates:
         return
-    vectors = await OpenAIEmbeddings().embed([q.body_display, *[c.body_display for c in candidates]])
-    ranked = sorted(zip(candidates, vectors[1:]), key=lambda pair: cosine(vectors[0], pair[1]), reverse=True)
-    for candidate, vector in ranked[:3]:
+    candidate_texts = [(candidate.id, candidate.body_display) for candidate in candidates]
+    vectors = await OpenAIEmbeddings().embed([question_text, *[text for _, text in candidate_texts]])
+    ranked = sorted(zip(candidate_texts, vectors[1:]), key=lambda pair: cosine(vectors[0], pair[1]), reverse=True)
+    for (candidate_id, candidate_text), vector in ranked[:3]:
         if cosine(vectors[0], vector) < 0.70:
-            continue
-        if candidate.cluster_id and db.get(Cluster, candidate.cluster_id).manual:
             continue
         equivalent = await OpenAIText().structured(
             "Would the same precise teaching answer satisfy BOTH questions? Related topics alone are not equivalent. Preserve distinctions. "
-            + json.dumps([q.body_display, candidate.body_display]),
+            + json.dumps([question_text, candidate_text]),
             Equivalent,
         )
         if not equivalent.same_answer:
             continue
+        # A split/moderation/edit may complete during either provider call. Recheck under
+        # the same session lock as manual grouping before applying the delayed result.
+        db.expire_all()
+        s = db.scalar(select(LiveSession).where(LiveSession.id == session_id).with_for_update()) if session_id else None
+        current = {
+            row.id: row
+            for row in db.scalars(
+                select(Question).where(Question.id.in_([qid, candidate_id])).order_by(Question.id).with_for_update()
+            )
+        }
+        q, candidate = current.get(qid), current.get(candidate_id)
+        if (
+            not can_auto_group(db, q)
+            or q.course_id != course_id
+            or q.session_id != session_id
+            or q.body_display != question_text
+        ):
+            db.rollback()
+            return
+        if (
+            not can_auto_group(db, candidate)
+            or candidate.course_id != course_id
+            or candidate.session_id != session_id
+            or candidate.body_display != candidate_text
+        ):
+            db.rollback()
+            continue
+        previous_cluster = q.cluster_id
         cluster = db.get(Cluster, candidate.cluster_id) if candidate.cluster_id else None
         if not cluster:
             cluster = Cluster(course_id=q.course_id, session_id=q.session_id, canonical_text=candidate.body_display)
@@ -205,8 +234,9 @@ async def group_question(db, qid):
             db.flush()
             candidate.cluster_id = cluster.id
         q.cluster_id = cluster.id
-        if q.session_id:
-            s = db.scalar(select(LiveSession).where(LiveSession.id == q.session_id).with_for_update())
+        if previous_cluster != cluster.id:
+            dissolve_small_groups(db, [previous_cluster])
+        if s:
             emit(db, s, "question.cluster.updated", audience="lecturer")
         db.commit()
         return
@@ -408,6 +438,12 @@ def queue(sid: str, db: DB, user: Actor, sort: str = "unanswered"):
                 "questions": [],
             },
         )["questions"].append(question_json(db, q, user, True))
+    for group in groups.values():
+        # Filtering can leave one visible member of a larger group. Offer only that
+        # question's actions instead of a bulk action on hidden members.
+        if len(group["questions"]) == 1:
+            group["id"] = None
+            group["canonical_text"] = group["questions"][0]["text"]
     jobs = list(
         db.scalars(
             select(Job)
@@ -471,17 +507,23 @@ class GroupInput(BaseModel):
 @router.post("/sessions/{sid}/clusters")
 def create_group(sid: str, data: GroupInput, db: DB, user: Actor):
     s, _ = live(db, sid, user, True, lock=True)
+    ids = list(dict.fromkeys(data.question_ids))
+    if len(ids) < 2:
+        raise HTTPException(422, "Select at least two different questions to group.")
     rows = []
-    for qid in data.question_ids:
+    for qid in ids:
         q, m = question_access(db, qid, user, True)
         if q.course_id != s.course_id or q.session_id != sid:
             raise HTTPException(404, "Question is outside this lecture.")
         rows.append(q)
+    previous_clusters = [q.cluster_id for q in rows]
     cluster = Cluster(course_id=s.course_id, session_id=sid, canonical_text=rows[0].body_display, manual=True)
     db.add(cluster)
     db.flush()
     for q in rows:
         q.cluster_id = cluster.id
+        q.auto_grouping_disabled = False
+    dissolve_small_groups(db, previous_clusters)
     emit(db, s, "question.cluster.updated", audience="lecturer")
     db.commit()
     return {"id": cluster.id}
@@ -508,15 +550,19 @@ def split_group(cluster_id: str, data: GroupInput, db: DB, user: Actor):
     member(db, c.course_id, user, True)
     if c.session_id:
         live(db, c.session_id, user, True, lock=True)
-    for qid in data.question_ids:
+    rows = []
+    for qid in dict.fromkeys(data.question_ids):
         q = require(db, Question, qid)
-        if q.cluster_id != cluster_id:
+        if q.cluster_id != cluster_id or q.course_id != c.course_id or q.session_id != c.session_id:
             raise HTTPException(404, "Question is not in this group.")
-        own = Cluster(course_id=c.course_id, session_id=c.session_id, canonical_text=q.body_display, manual=True)
-        db.add(own)
-        db.flush()
-        q.cluster_id = own.id
+        rows.append(q)
+    for q in rows:
+        q.cluster_id = None
+        q.auto_grouping_disabled = True
     c.manual = True
+    dissolve_small_groups(db, [c.id])
+    if c.session_id:
+        emit(db, db.get(LiveSession, c.session_id), "question.cluster.updated", audience="lecturer")
     db.commit()
     return {"split": True}
 
@@ -527,12 +573,23 @@ def merge_group(cluster_id: str, data: GroupInput, db: DB, user: Actor):
     member(db, c.course_id, user, True)
     if c.session_id:
         live(db, c.session_id, user, True, lock=True)
-    for qid in data.question_ids:
+    rows = []
+    for qid in dict.fromkeys(data.question_ids):
         q, m = question_access(db, qid, user, True)
         if q.course_id != c.course_id or q.session_id != c.session_id:
             raise HTTPException(404, "Question is outside this group context.")
+        rows.append(q)
+    existing = set(db.scalars(select(Question.id).where(Question.cluster_id == c.id)))
+    if len(existing | {q.id for q in rows}) < 2:
+        raise HTTPException(422, "A group needs at least two different questions.")
+    previous_clusters = [q.cluster_id for q in rows if q.cluster_id != c.id]
+    for q in rows:
         q.cluster_id = c.id
+        q.auto_grouping_disabled = False
     c.manual = True
+    dissolve_small_groups(db, previous_clusters)
+    if c.session_id:
+        emit(db, db.get(LiveSession, c.session_id), "question.cluster.updated", audience="lecturer")
     db.commit()
     return {"merged": True}
 

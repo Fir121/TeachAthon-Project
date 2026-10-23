@@ -101,3 +101,8 @@
 
 - Owner requested grouping checkboxes only after an explicit action, retention of all questions in mixed notes, and removal of the Original feedback tag. Group questions enters selection mode with tooltip/visible help explaining existing AI grouping; Cancel/Escape clears selection and saving exits it.
 - Delegated default: keep one private queue entry per note, with all extracted requests in separate paragraphs. Require ordered exact source quotes, falling back to the complete original when extraction is invalid or leaves an explicit request cue behind. No schema migration or public contract change; source quotes are transient. Safe reclassification preserves human edits, answers, movement and manual grouping. AI_WORKFLOW.md records the prompt, storage, guard and limitations.
+
+## Split groups restore individuals — 2026-10-23
+
+- Owner reported Split group creating individual groups with bulk answer controls. Confirmed: old code stored manual singleton clusters. Split now detaches questions; lone remainders are detached as well. Group headings/actions require multiple visible members. Existing singleton/empty groups are repaired in migration 0014.
+- Delegated default: preserve the previous protection against automatic regrouping using an internal per-question flag rather than singleton clusters. Explicit manual regrouping still works. Delayed provider results recheck this decision before writing. Text, human resolution, source matches, authors and visibility stay intact; only grouping state changes. Deletion/movement/reassignment also clean up lone remainders.
