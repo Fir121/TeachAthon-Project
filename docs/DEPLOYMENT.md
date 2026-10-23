@@ -108,3 +108,15 @@ Rebuild API/worker/proxy together with `docker compose up --build -d`; migration
 Caddy's negative matcher excludes only `/api/v1/diagrams/{UUID}/render` from the global CSP. The backend supplies that document's restrictive CSP with `frame-ancestors 'self'` and HTTP `sandbox allow-scripts`; all other application responses retain their original script/framing policy. Do not append a second global CSP or add global inline/eval permissions. Preview/live/replay frames grant only allow-scripts and use opaque origins. Do not expose the API on a separate public port or turn the render document into a static file. See AI_WORKFLOW.md §14 for CPU, generated-content quality and self-navigation limitations.
 
 Checks: `npm --prefix apps/web run test:e2e -- e2e/interactive-diagrams.spec.ts --grep 'approved diagrams'` seeds a clearly authored test-only artifact through an operator test process, then uses the real authenticated renderer/proxy/browser; no production fixture endpoint exists. Add `E2E_BROWSER=webkit` for WebKit. `RUN_DIAGRAM_AI=1 npm --prefix apps/web run test:e2e -- e2e/interactive-diagrams.spec.ts --grep 'real vision'` explicitly makes paid model calls on a newly authored disposable slide/course, exercises real generation controls, lecturer approval and mobile archive, then removes only its exact fixture course. All other pytest/Vitest tests mock providers only inside tests.
+
+## Trace semantic-search fallback failures
+
+Use the existing rotated API container logs:
+
+```sh
+docker compose logs --timestamps --since 1h api | rg semantic_search_failed
+```
+
+Each event is one JSON record with `search_id`, internal `course_id`, `mode`, failure `stage`, configured model names, error type/category, timing/budget, candidate count and source-free stack locations. A secondary keyword-fallback failure shares the same search ID. Categories distinguish provider HTTP/connection failures, timeouts, schema validation, source-ID coverage, embedding configuration, database and unexpected errors. HTTP failures include `http_status` and a sanitized `provider_request_id` when the provider supplied `x-request-id`; coverage errors include counts instead of source IDs. Schema failures include bounded validator types/known field locations with unknown field names masked. These metadata support investigation without logging questions, source text/titles, response bodies, raw exceptions, SQL parameters, embeddings or keys. Provider request-ID guidance: [OpenAI API reference](https://developers.openai.com/api/reference/python).
+
+These records use Compose's existing `json-file` rotation (10 MB × 3 files per service), not a new database or telemetry service. Collect the logs before recreating the API container; Docker log retention covers restarts/rotation, not removed containers. The browser keeps the ordinary warning and posting/retry controls. The confidence warning is generated only when every candidate in a nonempty assessment is uncertain.

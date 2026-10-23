@@ -2,12 +2,14 @@
 
 import asyncio
 import time
+from uuid import uuid4
 from sqlalchemy import select, func, literal_column, or_
 from ..config import settings
 from ..models import SourceChunk, Resource, Question, Lecture, LiveSession, Job
 from .providers.openai import OpenAIEmbeddings
 from .evidence import judge, cosine, reciprocal_ranks
 from .keywords import tokens, stems, keyword_match
+from .search_diagnostics import log_search_failure
 
 
 def lexical_similarity(query, text):
@@ -178,8 +180,35 @@ def authorised(db, cid, chunks):
 def run_search(db, cid, query, deadline, *, mode="preflight"):
     from .retrieval import group_hits, embedding_compatible, _keyword_search
 
+    search_id = uuid4().hex
+    started = stage_started = time.monotonic()
+    stage = "embedding_configuration"
+    candidate_count = 0
+
+    def mark_stage(name):
+        nonlocal stage, stage_started
+        stage, stage_started = name, time.monotonic()
+
+    def log_failure(exc):
+        log_search_failure(
+            exc,
+            search_id=search_id,
+            course_id=cid,
+            mode=mode,
+            stage=stage,
+            started=started,
+            stage_started=stage_started,
+            deadline=deadline,
+            candidates=candidate_count,
+        )
+
     def fallback(message):
-        matches, _ = _keyword_search(db, cid, query, deadline)
+        mark_stage("keyword_fallback")
+        try:
+            matches, _ = _keyword_search(db, cid, query, deadline)
+        except Exception as exc:
+            log_failure(exc)
+            raise
         matches.method = "Keyword fallback"
         matches.complete = False
         return matches, [message]
@@ -190,6 +219,7 @@ def run_search(db, cid, query, deadline, *, mode="preflight"):
         )
     try:
         embedding_compatible(db)
+        mark_stage("query_embedding")
         remaining = deadline - time.monotonic()
         timeout = min(settings().query_embedding_timeout_seconds, max(0.01, remaining - 6))
 
@@ -197,8 +227,12 @@ def run_search(db, cid, query, deadline, *, mode="preflight"):
             return await asyncio.wait_for(OpenAIEmbeddings().embed([query], timeout=timeout), timeout=timeout)
 
         vector = asyncio.run(embed_query())[0]
+        mark_stage("index_readiness")
         warnings = index_warnings(db, cid)
+        mark_stage("candidate_retrieval")
         chunks = candidates(db, cid, query, vector)
+        candidate_count = len(chunks)
+        mark_stage("assessment_context")
         entries = [
             {
                 "id": c.id,
@@ -213,6 +247,7 @@ def run_search(db, cid, query, deadline, *, mode="preflight"):
         remaining = deadline - time.monotonic()
         if remaining <= 0:
             raise TimeoutError("Retrieval deadline reached")
+        mark_stage("source_assessment")
         decisions, assessment_warnings = asyncio.run(
             judge(
                 query,
@@ -222,7 +257,9 @@ def run_search(db, cid, query, deadline, *, mode="preflight"):
             )
         )
         warnings += assessment_warnings
+        mark_stage("authorization_recheck")
         chunks = authorised(db, cid, chunks)
+        mark_stage("source_grouping")
         current = {c.id: c for c in chunks}
         hits, unlocated = [], set()
         for position, decision in enumerate(decisions):
@@ -239,7 +276,8 @@ def run_search(db, cid, query, deadline, *, mode="preflight"):
         matches.method = "Semantic course source search"
         matches.complete = not warnings
         return matches, list(dict.fromkeys(warnings))
-    except Exception:
+    except Exception as exc:
+        log_failure(exc)
         if time.monotonic() >= deadline:
             raise
         return fallback(

@@ -26,6 +26,21 @@ class RelevanceOutput(StrictOutput):
     decisions: list[RelevanceDecision]
 
 
+class AssessmentCoverageError(ValueError):
+    """Source-free counts for invalid model decision coverage."""
+
+    def __init__(self, allowed, returned):
+        super().__init__("Source assessment did not account for every supplied source ID.")
+        identifiers = set(returned)
+        self.counts = {
+            "expected": len(allowed),
+            "returned": len(returned),
+            "missing": len(allowed - identifiers),
+            "unexpected": len(identifiers - allowed),
+            "duplicates": len(returned) - len(identifiers),
+        }
+
+
 def cosine(a, b):
     denominator = math.sqrt(sum(x * x for x in a) * sum(y * y for y in b))
     return sum(x * y for x, y in zip(a, b, strict=True)) / denominator if denominator else 0
@@ -103,8 +118,8 @@ async def judge(query, entries, *, timeout, purpose="course search"):
     allowed = {entry["id"] for entry in selected}
     returned = [decision.id for decision in result.decisions]
     if len(returned) != len(set(returned)) or set(returned) != allowed:
-        raise ValueError("Source assessment did not account for every supplied source ID.")
+        raise AssessmentCoverageError(allowed, returned)
     warnings = []
-    if any(decision.relevance == "uncertain" for decision in result.decisions):
-        warnings.append("Some possible sources could not be assessed confidently. Retry or review before posting.")
+    if result.decisions and all(decision.relevance == "uncertain" for decision in result.decisions):
+        warnings.append("None of the checked sources could be assessed confidently. Retry or review before posting.")
     return result.decisions, warnings

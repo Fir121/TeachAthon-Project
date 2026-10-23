@@ -4,6 +4,7 @@ Official live/file transcription guides checked 2026-10-20; see docs/DECISIONS.m
 
 import base64
 import json
+import re
 from pathlib import Path
 import httpx
 from pydantic import BaseModel
@@ -17,13 +18,22 @@ def headers():
     return {"Authorization": f"Bearer {settings().openai_api_key}"}
 
 
+class OpenAIRequestError(RuntimeError):
+    """HTTP failure metadata only; provider response bodies may contain private input."""
+
+    def __init__(self, status_code, request_id=None):
+        super().__init__(
+            f"OpenAI request failed (HTTP {status_code}). Check model access, limits and server configuration."
+        )
+        self.status_code = status_code
+        self.request_id = request_id if request_id and re.fullmatch(r"[A-Za-z0-9_-]{1,128}", request_id) else None
+
+
 async def request(path, payload=None, timeout=60, **kwargs):
     async with httpx.AsyncClient(timeout=timeout, base_url=settings().openai_base_url) as client:
         r = await client.post(path, headers=headers(), json=payload, **kwargs)
         if r.is_error:
-            raise RuntimeError(
-                f"OpenAI request failed (HTTP {r.status_code}). Check model access, limits and server configuration."
-            )
+            raise OpenAIRequestError(r.status_code, r.headers.get("x-request-id"))
         return r.json()
 
 

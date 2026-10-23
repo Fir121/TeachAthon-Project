@@ -50,41 +50,50 @@ test("student poll renders saved vote without aggregates", () => {
   expect(screen.getByText(/Response saved/)).toBeVisible();
   expect(screen.queryByText(/aggregate only/)).not.toBeInTheDocument();
 });
-test("failed preflight allows explicit post and never silently posts", async () => {
-  const fetcher = vi
-    .fn()
-    .mockResolvedValueOnce(
-      new Response(
-        JSON.stringify({
-          preflight_token: "proof",
-          status: "failed",
-          error: "Source search is unavailable.",
-          matches: [],
-          method: "keyword retrieval",
-        }),
-        { status: 200 },
-      ),
-    )
-    .mockResolvedValueOnce(
-      new Response(JSON.stringify({ id: "q" }), { status: 201 }),
-    );
-  vi.stubGlobal("fetch", fetcher);
-  const closed = vi.fn();
-  wrap(<AskFlow courseId="course" onClose={closed} />);
-  fireEvent.change(screen.getByLabelText("Your question"), {
-    target: { value: "Why is search logarithmic?" },
-  });
-  expect(screen.queryByText("Post my question anyway")).not.toBeInTheDocument();
-  fireEvent.click(screen.getByText("Post question"));
-  await screen.findByText("Source search is unavailable.");
-  expect(fetcher).toHaveBeenCalledTimes(1);
-  fireEvent.click(screen.getByText("Post anyway"));
-  await waitFor(() => expect(closed).toHaveBeenCalled());
-  expect(JSON.parse(fetcher.mock.calls[1][1].body)).toMatchObject({
-    preflight_token: "proof",
-    text: "Why is search logarithmic?",
-  });
-});
+test.each([
+  "Source search is unavailable.",
+  "None of the checked sources could be assessed confidently. Retry or review before posting.",
+  "Semantic source assessment is unavailable; keyword matches may be incomplete. Retry or review before posting.",
+])(
+  "failed preflight displays its error and requires explicit posting: %s",
+  async (error) => {
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            preflight_token: "proof",
+            status: "failed",
+            error,
+            matches: [],
+            method: "keyword retrieval",
+          }),
+          { status: 200 },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ id: "q" }), { status: 201 }),
+      );
+    vi.stubGlobal("fetch", fetcher);
+    const closed = vi.fn();
+    wrap(<AskFlow courseId="course" onClose={closed} />);
+    fireEvent.change(screen.getByLabelText("Your question"), {
+      target: { value: "Why is search logarithmic?" },
+    });
+    expect(
+      screen.queryByText("Post my question anyway"),
+    ).not.toBeInTheDocument();
+    fireEvent.click(screen.getByText("Post question"));
+    await screen.findByText(error);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByText("Post anyway"));
+    await waitFor(() => expect(closed).toHaveBeenCalled());
+    expect(JSON.parse(fetcher.mock.calls[1][1].body)).toMatchObject({
+      preflight_token: "proof",
+      text: "Why is search logarithmic?",
+    });
+  },
+);
 
 test("successful empty retrieval posts once and preserves the submission identifier", async () => {
   const fetcher = vi
