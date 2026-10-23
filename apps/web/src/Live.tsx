@@ -103,7 +103,14 @@ export function LectureSetup() {
     queryKey: ["outline", id],
     queryFn: () =>
       api<{
-        outline: { topics: string[] } | null;
+        outline: {
+          topics: string[];
+          status?: string;
+          total_sections?: number;
+          completed_sections?: number;
+          showing_previous?: boolean;
+          error?: string | null;
+        } | null;
         jobs: { status: string; error: string | null }[];
       }>(`/lectures/${id}/outline`),
     enabled: course.data?.membership === "lecturer",
@@ -261,6 +268,17 @@ export function LectureSetup() {
                   {topic}
                 </p>
               ))}
+              {outline.data?.outline?.status && (
+                <p className="muted small spaced" role="status">
+                  {outline.data.outline.status === "ready"
+                    ? "All extracted slide sections processed."
+                    : `${outline.data.outline.status === "partial" ? "Partial outline" : "Processing outline"}: ${outline.data.outline.completed_sections || 0} of ${outline.data.outline.total_sections || 0} sections processed.`}
+                  {outline.data.outline.showing_previous &&
+                    " The previous outline is shown while the replacement is prepared."}
+                  {outline.data.outline.error &&
+                    ` ${outline.data.outline.error}`}
+                </p>
+              )}
               {outline.data?.jobs.map((j, i) => (
                 <p className="muted small" key={i}>
                   {j.status} {j.error}

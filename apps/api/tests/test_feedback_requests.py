@@ -5,6 +5,7 @@ from test_classroom import room
 from app.intelligence import Classification, classify_feedback
 from app.ai.providers.openai import OpenAIText
 from app.models import Feedback, Question
+from semantic_fixtures import note_result
 
 NOTE = "Tell me more about irradiance I love the course what is systems design? course is nice"
 REQUESTS = [
@@ -29,7 +30,7 @@ def test_all_requests_remain_visible_and_original_stays_private(room, monkeypatc
     assert s.post(f"/api/v1/polls/{pid}/feedback", json={"text": NOTE}).status_code == 202
 
     async def classify(*_):
-        return Classification(classification="question", requests=requests)
+        return note_result(NOTE, requests, cover_gaps=complete)
 
     monkeypatch.setattr(OpenAIText, "structured", classify)
     with factory() as db:
@@ -65,7 +66,7 @@ def test_rechecks_preserve_human_resolution_edits_and_moderation(room, monkeypat
     s.post(f"/api/v1/polls/{pid}/feedback", json={"text": NOTE})
 
     async def classify(*_):
-        return Classification(classification="question", requests=REQUESTS)
+        return note_result(NOTE, REQUESTS)
 
     monkeypatch.setattr(OpenAIText, "structured", classify)
     with factory() as db:

@@ -1,0 +1,147 @@
+{
+  "version": "semantic-quality-v2",
+  "resources": {
+    "radiometry.txt": "Radiant power received per unit area describes the incoming electromagnetic energy flux density at a surface. It is measured in watts per square metre.",
+    "reasoning.txt": "Artificial intelligence studies systems that learn, reason and perform tasks that normally require human intelligence.",
+    "cpp.txt": "C++ references alias an existing object. An lvalue reference is declared with & and must be initialized; reference lifetime rules matter.",
+    "csharp.txt": "C# reference types include classes and arrays. Variables hold references managed by the .NET garbage collector.",
+    "gardening.txt": "Irrigation delivers water to plants through sprinklers and drip lines. This document explains garden watering schedules."
+  },
+  "search": [
+    {
+      "name": "definition without exact vocabulary",
+      "query": "irradiance",
+      "include": "radiometry.txt",
+      "exclude": [
+        "gardening.txt"
+      ]
+    },
+    {
+      "name": "technical acronym",
+      "query": "AI",
+      "include": "reasoning.txt",
+      "exclude": [
+        "gardening.txt"
+      ]
+    },
+    {
+      "name": "programming-language distinction",
+      "query": "C++ references",
+      "include": "cpp.txt",
+      "exclude": [
+        "csharp.txt"
+      ]
+    }
+  ],
+  "feedback": [
+    {
+      "name": "two questions mixed with praise",
+      "text": "Tell me more about irradiance I love the course what is systems design? course is nice",
+      "requests": 2,
+      "contains": [
+        "irradiance",
+        "systems design"
+      ]
+    },
+    {
+      "name": "implicit later request",
+      "text": "Tell me more about irradiance. More detail on systems design would help.",
+      "requests": 2,
+      "contains": [
+        "irradiance",
+        "systems design"
+      ]
+    },
+    {
+      "name": "how in praise",
+      "text": "Explain irradiance. I love how this course is taught.",
+      "requests": 1,
+      "contains": [
+        "irradiance"
+      ]
+    },
+    {
+      "name": "unchanged praise",
+      "text": "I like this course",
+      "requests": 0,
+      "contains": []
+    }
+  ],
+  "grouping": [
+    {
+      "name": "equivalent explanations",
+      "questions": [
+        "Why does binary search need logarithmically many comparisons?",
+        "Why is the number of comparisons in binary search logarithmic in the input size?"
+      ],
+      "groups": [
+        [
+          0,
+          1
+        ]
+      ]
+    },
+    {
+      "name": "different language semantics",
+      "questions": [
+        "How do references work in C++?",
+        "How do reference types work in C#?"
+      ],
+      "groups": [
+        [
+          0
+        ],
+        [
+          1
+        ]
+      ]
+    },
+    {
+      "name": "opposite constraints",
+      "questions": [
+        "Why is f(x) > 0 in this argument?",
+        "Why is f(x) < 0 in this argument?"
+      ],
+      "groups": [
+        [
+          0
+        ],
+        [
+          1
+        ]
+      ]
+    },
+    {
+      "name": "whole-group multi-request precision",
+      "questions": [
+        "Why does binary search need logarithmically many comparisons?",
+        "Why is the number of comparisons in binary search logarithmic in the input size?",
+        "Why is binary search logarithmic, and how should hash-table collisions be resolved?"
+      ],
+      "groups": [
+        [
+          0,
+          1
+        ],
+        [
+          2
+        ]
+      ]
+    },
+    {
+      "name": "related mechanism and runtime kept separate",
+      "questions": [
+        "Why does binary search need logarithmically many comparisons?",
+        "Why does repeatedly halving the sorted search interval give logarithmic running time?"
+      ],
+      "groups": [
+        [
+          0
+        ],
+        [
+          1
+        ]
+      ]
+    }
+  ]
+}

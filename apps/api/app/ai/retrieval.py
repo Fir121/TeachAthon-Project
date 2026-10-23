@@ -270,6 +270,8 @@ class SearchMatches(list):
     def __init__(self, groups, contexts):
         super().__init__(groups)
         self.contexts = contexts
+        self.method = "Keyword fallback"
+        self.complete = False
 
 
 def group_hits(db, hits, unlocated=None):
@@ -339,7 +341,12 @@ def group_hits(db, hits, unlocated=None):
         groups[key]["locations"].sort(key=lambda location: (location["page_number"] or 0, location["start_ms"] or 0))
         if groups[key]["locations"]:
             groups[key]["url"] = groups[key]["locations"][0]["url"]
-    return SearchMatches([groups[k] for k in keys], [context for k in keys for context in contexts[k]][:40])
+    from .context import balanced
+
+    selected_contexts = balanced(
+        [context for k in keys for context in contexts[k]], budget=6000, limit=40, parent=lambda item: item["source_id"]
+    )
+    return SearchMatches([groups[k] for k in keys], selected_contexts)
 
 
 async def search(db, cid, query, mode="preflight"):
@@ -378,7 +385,9 @@ def deadline_session(bind, budget):
 def _search(bind, cid, query, budget, requested_at=None, mode="preflight"):
     budget -= time.monotonic() - requested_at if requested_at is not None else 0
     with deadline_session(bind, budget) as (db, deadline):
-        return _keyword_search(db, cid, query, deadline) if mode == "keywords" else _retrieve(db, cid, query, deadline)
+        from .search_engine import run_search
+
+        return run_search(db, cid, query, deadline, mode=mode)
 
 
 def _keyword_search(db, cid, query, deadline):
@@ -460,94 +469,6 @@ def _keyword_search(db, cid, query, deadline):
     return group_hits(db, hits, unlocated), []
 
 
-def _retrieve(db, cid, query, deadline):
-    import time
-    from ..questions import lexical_score, words
-
-    scope = safe_scope(cid)
-    candidates, fts, semantic, warnings = {}, {}, {}, []
-    if db.bind.dialect.name == "postgresql":
-        rank = func.ts_rank_cd(
-            func.to_tsvector(literal_column("'english'"), SourceChunk.text),
-            func.websearch_to_tsquery(literal_column("'english'"), query),
-        )
-        # Candidate collection must allow partial lexical overlap: natural questions and
-        # OCR punctuation can fail an all-terms websearch even when the relevance gate passes.
-        terms = " | ".join(sorted(words(query)))
-        vector_text = func.to_tsvector(literal_column("'english'"), SourceChunk.text)
-        keyword_match = vector_text.op("@@")(func.to_tsquery(literal_column("'english'"), terms)) if terms else rank > 0
-        # No chunk cap before source grouping; retain the original full-text ranking term.
-        for chunk, score in db.execute(
-            select(SourceChunk, rank.label("rank")).where(scope, keyword_match).order_by(rank.desc())
-        ):
-            candidates[chunk.id], fts[chunk.id] = chunk, float(score)
-    else:
-        for chunk in db.scalars(select(SourceChunk).where(scope)):
-            candidates[chunk.id] = chunk
-    if settings().openai_api_key:
-        try:
-            embedding_compatible(db)
-            timeout = min(settings().query_embedding_timeout_seconds, max(0.01, deadline - time.monotonic()))
-
-            async def query_vector():
-                return await asyncio.wait_for(
-                    OpenAIEmbeddings().embed([query[:8000]], timeout=timeout), timeout=timeout
-                )
-
-            vector = asyncio.run(query_vector())[0]
-            if db.bind.dialect.name == "postgresql":
-                distance = SourceChunk.embedding.cosine_distance(vector)
-                # Threshold before grouping; no chunk-based result cap.
-                for chunk, value in db.execute(
-                    select(SourceChunk, distance)
-                    .where(
-                        scope,
-                        SourceChunk.embedding_model == settings().openai_embed_model,
-                        SourceChunk.embedding.is_not(None),
-                        distance <= 0.22,
-                    )
-                    .order_by(distance)
-                ):
-                    candidates[chunk.id], semantic[chunk.id] = chunk, 1 - float(value)
-        except Exception:
-            warnings.append("Semantic search is unavailable; keyword results are shown.")
-    # Recheck current authorization after provider latency, including exclusions/private edits.
-    permitted = set(db.scalars(select(SourceChunk.id).where(scope)))
-    hits = []
-    for chunk in candidates.values():
-        if time.monotonic() >= deadline:
-            raise TimeoutError("Retrieval deadline reached")
-        if chunk.id not in permitted:
-            continue
-        lexical, overlap = lexical_score(query, chunk.text), len(words(query) & words(chunk.text))
-        sim = semantic.get(chunk.id, 0)
-        if (lexical >= 0.45 and overlap >= 2) or sim >= 0.78:
-            score = 0.6 * lexical + 0.35 * max(0, sim) + 0.05 * min(1, fts.get(chunk.id, 0))
-            hits.append((chunk, score))
-    indexed_questions = {c.question_id for c in candidates.values() if c.question_id}
-    for question in db.scalars(select(Question).where(Question.course_id == cid, Question.visibility == "public")):
-        score = lexical_score(query, question.body_display)
-        if (
-            question.id not in indexed_questions
-            and score >= 0.6
-            and len(words(query) & words(question.body_display)) >= 2
-        ):
-            hits.append(
-                (
-                    SourceChunk(
-                        id=question.id,
-                        course_id=cid,
-                        question_id=question.id,
-                        source_type="question",
-                        title=question.body_original[:160],
-                        text=question.body_display,
-                    ),
-                    score * 0.6,
-                )
-            )
-    return group_hits(db, hits), warnings
-
-
 class GroundedAnswer(BaseModel):
     model_config = ConfigDict(extra="forbid")
     answer: str
@@ -586,4 +507,20 @@ def _answer(bind, cid, query, matches, budget, requested_at=None):
     allowed = {m["source_id"] for m in matches}
     if not data.source_ids or not set(data.source_ids) <= allowed:
         return None
+    # All supplied evidence must remain authorised after generation, including sources
+    # the model may have used without citing. Never return prose derived from a revoked source.
+    with deadline_session(bind, max(0.001, deadline - time.monotonic())) as (db, _):
+        current = set(
+            db.scalars(
+                select(Resource.id).where(
+                    Resource.course_id == cid, Resource.indexing_enabled.is_(True), Resource.process_status == "ready"
+                )
+            )
+        )
+        current.update(db.scalars(select(LiveSession.id).where(LiveSession.course_id == cid)))
+        current.update(
+            db.scalars(select(Question.id).where(Question.course_id == cid, Question.visibility == "public"))
+        )
+        if not {context["source_id"] for context in contexts} <= current:
+            raise RuntimeError("A source changed during answer generation; retry the source check.")
     return data.answer[:1500]

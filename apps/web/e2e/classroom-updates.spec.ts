@@ -57,15 +57,11 @@ test("lecture upload, live-start races, fullscreen and two-browser discussion mo
       .getByLabel("Lecture title")
       .fill("Uploaded during lecture setup");
     // A malformed authored PDF exercises genuine worker failure and retry, without fake processing results.
-    await dialog
-      .getByLabel("Upload slides", { exact: true })
-      .setInputFiles({
-        name: "broken.pdf",
-        mimeType: "application/pdf",
-        buffer: Buffer.from(
-          "%PDF-1.7\nintentionally incomplete test document\n",
-        ),
-      });
+    await dialog.getByLabel("Upload slides", { exact: true }).setInputFiles({
+      name: "broken.pdf",
+      mimeType: "application/pdf",
+      buffer: Buffer.from("%PDF-1.7\nintentionally incomplete test document\n"),
+    });
     await expect(
       dialog.getByText(/broken.pdf · Slide preparation failed/),
     ).toBeVisible({ timeout: 30000 });
@@ -100,6 +96,30 @@ test("lecture upload, live-start races, fullscreen and two-browser discussion mo
     );
     const rid = await dialog.getByLabel("Prepared slide deck").inputValue();
     expect(rid).not.toBe("");
+    // The deliberately broken deck must not count as ready searchable content.
+    const resources = await (
+      await teacher.request.get(`/api/v1/courses/${cid}/resources`)
+    ).json();
+    const broken = resources.find(
+      (resource: { original_filename: string }) =>
+        resource.original_filename === "broken.pdf",
+    );
+    expect(broken).toBeTruthy();
+    expect(
+      (
+        await teacher.request.patch(`/api/v1/resources/${broken.id}`, {
+          data: { original_filename: "broken.pdf", indexing_enabled: false },
+        })
+      ).status(),
+    ).toBe(200);
+    await expect
+      .poll(
+        async () =>
+          (await (await teacher.request.get(`/api/v1/resources/${rid}`)).json())
+            .index_status,
+        { timeout: 90000 },
+      )
+      .toBe("ready");
     await t.screenshot({ path: "test-results/create-lecture-upload.png" });
     await dialog
       .getByRole("button", { name: "Create lecture", exact: true })

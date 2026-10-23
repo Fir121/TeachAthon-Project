@@ -205,6 +205,7 @@ class Question(Base):
     state: Mapped[str] = mapped_column(default="open")
     discussion_only: Mapped[bool] = mapped_column(default=False)
     auto_grouping_disabled: Mapped[bool] = mapped_column(default=False)
+    request_parts: Mapped[list] = mapped_column(JSON, default=list)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     edited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     match_json: Mapped[dict] = mapped_column(JSON, default=lambda: {"state": "unavailable"})
@@ -315,6 +316,7 @@ class Cluster(Base):
     session_id: Mapped[str | None] = mapped_column(ForeignKey("lecture_sessions.id", ondelete="CASCADE"))
     canonical_text: Mapped[str]
     manual: Mapped[bool] = mapped_column(default=False)
+    decision_json: Mapped[dict] = mapped_column(JSON, default=dict)
 
 
 class Feedback(Base):
@@ -325,5 +327,6 @@ class Feedback(Base):
     text_original: Mapped[str]
     text_rewritten: Mapped[str | None]
     classification: Mapped[str] = mapped_column(default="unclassified")
+    analysis_json: Mapped[dict] = mapped_column(JSON, default=dict)
     ai_modified: Mapped[bool] = mapped_column(default=False)
     linked_question_id: Mapped[str | None] = mapped_column(ForeignKey("questions.id", ondelete="SET NULL"))

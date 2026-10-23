@@ -63,6 +63,13 @@ export type Question = {
     end_ms?: number;
     excerpt?: string;
     possibly_addressed?: boolean;
+    coverage?: string;
+    excerpts?: {
+      url: string;
+      start_ms: number;
+      end_ms: number;
+      request_ids: string[];
+    }[];
   };
 };
 function SourceMatch({
@@ -507,6 +514,9 @@ export function QuestionCard({
   const removeMatch = useAction(() =>
     api(`/answer-sources/${q.id}`, undefined, "DELETE"),
   );
+  const recheckMatch = useAction(() =>
+    api(`/answer-sources/${q.id}/reprocess`, {}),
+  );
   return (
     <article
       className={`question-card ${q.visibility === "private" ? "private" : ""}`}
@@ -583,68 +593,117 @@ export function QuestionCard({
               <p>{q.original}</p>
             </details>
           )}
-          {q.match.state === "ready" && q.match.url && (
-            <div>
-              <a href={q.match.url} className="text-button">
-                Suggested recording excerpt ↗
-              </a>
-              {teacher && (
-                <>
-                  <p className="muted small">
-                    {q.match.possibly_addressed
-                      ? "Possibly addressed · review before marking answered"
-                      : "Suggested match to actual recorded speech"}
-                  </p>
-                  <button
-                    className="danger"
-                    onClick={() => removeMatch.mutate()}
-                  >
-                    Remove excerpt link
-                  </button>
-                  <details>
-                    <summary>Adjust excerpt time</summary>
-                    <form
-                      onSubmit={(e) => {
-                        e.preventDefault();
-                        const d = new FormData(e.currentTarget);
-                        editMatch.mutate({
-                          start_ms: Number(d.get("start")),
-                          end_ms: Number(d.get("end")),
-                        });
-                      }}
+          {(q.match.state === "ready" ||
+            (teacher && q.match.state === "legacy")) &&
+            q.match.url && (
+              <div>
+                {q.match.excerpts && q.match.excerpts.length > 1 ? (
+                  q.match.excerpts.map((excerpt, index) => (
+                    <a
+                      key={excerpt.url}
+                      href={excerpt.url}
+                      className="text-button"
                     >
-                      <label>
-                        Start offset (milliseconds)
-                        <input
-                          name="start"
-                          type="number"
-                          min={0}
-                          defaultValue={q.match.start_ms}
-                          required
-                        />
-                      </label>
-                      <label>
-                        End offset (milliseconds)
-                        <input
-                          name="end"
-                          type="number"
-                          min={1}
-                          defaultValue={q.match.end_ms}
-                          required
-                        />
-                      </label>
-                      <button
-                        className="secondary"
-                        disabled={editMatch.isPending}
+                      Suggested recording excerpt {index + 1} ↗
+                    </a>
+                  ))
+                ) : (
+                  <a href={q.match.url} className="text-button">
+                    {q.match.state === "legacy"
+                      ? "Earlier suggested passage · review ↗"
+                      : "Suggested recording excerpt ↗"}
+                  </a>
+                )}
+                {teacher && (
+                  <>
+                    <p className="muted small">
+                      {q.match.state === "legacy"
+                        ? "Complete answer coverage has not been rechecked."
+                        : q.match.possibly_addressed
+                          ? "Possibly addressed · review before marking answered"
+                          : "Suggested match to actual recorded speech"}
+                    </p>
+                    <button
+                      className="danger"
+                      onClick={() => removeMatch.mutate()}
+                    >
+                      Remove excerpt link
+                    </button>
+                    <details>
+                      <summary>Adjust excerpt time</summary>
+                      <form
+                        onSubmit={(e) => {
+                          e.preventDefault();
+                          const d = new FormData(e.currentTarget);
+                          editMatch.mutate({
+                            start_ms: Number(d.get("start")),
+                            end_ms: Number(d.get("end")),
+                          });
+                        }}
                       >
-                        Save excerpt range
-                      </button>
-                    </form>
-                  </details>
-                </>
-              )}
+                        <label>
+                          Start offset (milliseconds)
+                          <input
+                            name="start"
+                            type="number"
+                            min={0}
+                            defaultValue={q.match.start_ms}
+                            required
+                          />
+                        </label>
+                        <label>
+                          End offset (milliseconds)
+                          <input
+                            name="end"
+                            type="number"
+                            min={1}
+                            defaultValue={q.match.end_ms}
+                            required
+                          />
+                        </label>
+                        <button
+                          className="secondary"
+                          disabled={editMatch.isPending}
+                        >
+                          Save excerpt range
+                        </button>
+                      </form>
+                    </details>
+                  </>
+                )}
+              </div>
+            )}
+          {teacher && q.match.state === "partial" && (
+            <div className="spaced">
+              <p className="muted small">
+                Related passages were found for some requests. A complete answer
+                was not verified.
+              </p>
+              {q.match.excerpts?.map((excerpt, index) => (
+                <a key={excerpt.url} href={excerpt.url} className="text-button">
+                  Review related passage {index + 1} ↗
+                </a>
+              ))}
+              <button className="danger" onClick={() => removeMatch.mutate()}>
+                Remove suggested passages
+              </button>
             </div>
           )}
+          {teacher &&
+            q.session_id &&
+            (q.match.state === "legacy" ||
+              q.match.state === "partial" ||
+              (q.recording_answer?.state === "ready" &&
+                q.match.state !== "pending")) && (
+              <button
+                className="text-button"
+                disabled={recheckMatch.isPending}
+                onClick={() => recheckMatch.mutate()}
+              >
+                Recheck recording passages
+              </button>
+            )}
+          <Failure error={recheckMatch.error} />
           {q.state === "answered" &&
             q.match.state !== "ready" &&
             q.recording_answer && (

@@ -2,8 +2,9 @@ import asyncio
 from datetime import timedelta
 import pytest
 from app.models import LiveSession, Question, Transcript, Cluster, now
-from app.intelligence import due_poll, match_excerpt, ExcerptChoice
-from app.ai.providers.openai import OpenAIText
+from app.intelligence import due_poll, match_excerpt, ExcerptSelection
+from app.ai.providers.openai import OpenAIText, OpenAIEmbeddings
+from semantic_fixtures import note_result
 from test_classroom import room, post_question
 
 
@@ -54,8 +55,18 @@ def test_unmarked_match_suggestion_never_resolves_or_leaks_to_student(room, monk
         tid = segment.id
 
     async def model(*_):
-        return ExcerptChoice(source_id=tid, addresses_question=True, reason="explains logarithmic halving")
+        return ExcerptSelection(
+            answers=[
+                dict(
+                    request_id=f"{q['id']}:whole", source_id=tid, coverage="full", reason="explains logarithmic halving"
+                )
+            ]
+        )
 
+    async def vectors(self, texts, **kwargs):
+        return [[1.0, 0.0] for _ in texts]
+
+    monkeypatch.setattr(OpenAIEmbeddings, "embed", vectors)
     monkeypatch.setattr(OpenAIText, "structured", model)
     with factory() as db:
         asyncio.run(match_excerpt(db, q["id"]))
@@ -88,6 +99,7 @@ def test_topic_checkpoint_opens_exactly_one_automatic_poll(room, monkeypatch):
     async def checkpoint(*_):
         return TopicOutput(
             topic="Correctness invariants",
+            topic_ref="new",
             subtopic="Loop invariant",
             transition=True,
             new_checkpoint=True,
@@ -116,10 +128,7 @@ def test_feedback_sends_directly_and_routes_named_but_private(room, monkeypatch)
     assert s.post(f"/api/v1/polls/{pid}/feedback", json={"text": text}).status_code == 202
 
     async def classify(*_):
-        return Classification(
-            classification="question",
-            requests=[{"source_quote": text, "question": "Please explain the sorted interval invariant."}],
-        )
+        return note_result(text, [{"source_quote": text, "question": "Please explain the sorted interval invariant."}])
 
     monkeypatch.setattr(OpenAIText, "structured", classify)
     with factory() as db:

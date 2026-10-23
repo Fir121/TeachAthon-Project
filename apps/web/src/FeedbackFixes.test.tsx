@@ -1,4 +1,10 @@
-import { render, screen, fireEvent, cleanup } from "@testing-library/react";
+import {
+  render,
+  screen,
+  fireEvent,
+  cleanup,
+  waitFor,
+} from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, expect, test, vi } from "vitest";
@@ -294,4 +300,127 @@ test("a lone question is an ordinary card even if a stale response still has a g
     screen.queryByRole("button", { name: "Split group" }),
   ).not.toBeInTheDocument();
   expect(screen.queryByText("Old group heading")).not.toBeInTheDocument();
+});
+
+test("partial answer coverage stays a lecturer review and keeps the whole recording link", () => {
+  const partial: Question = {
+    ...question,
+    match: {
+      state: "partial",
+      coverage: "partial",
+      excerpts: [
+        {
+          url: "/recordings/session?t=1000",
+          start_ms: 1000,
+          end_ms: 4000,
+          request_ids: ["a"],
+        },
+      ],
+    },
+  };
+  const view = wrap(
+    <QuestionCard question={partial} teacher open={false} onOpen={() => {}} />,
+  );
+  expect(screen.getByText(/A complete answer was not verified/)).toBeVisible();
+  expect(
+    screen.getByRole("link", { name: /Review related passage 1/ }),
+  ).toHaveAttribute("href", "/recordings/session?t=1000");
+  expect(screen.getByRole("link", { name: "Search lecture" })).toBeVisible();
+  view.unmount();
+  wrap(
+    <QuestionCard
+      question={partial}
+      teacher={false}
+      open={false}
+      onOpen={() => {}}
+    />,
+  );
+  expect(
+    screen.queryByRole("link", { name: /Review related passage/ }),
+  ).not.toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "Search lecture" })).toBeVisible();
+});
+
+test("a complete multi-request answer offers all actual recording passages", () => {
+  wrap(
+    <QuestionCard
+      question={{
+        ...question,
+        match: {
+          state: "ready",
+          url: "/recordings/session?t=1000",
+          coverage: "complete",
+          excerpts: [
+            {
+              url: "/recordings/session?t=1000",
+              start_ms: 1000,
+              end_ms: 4000,
+              request_ids: ["a"],
+            },
+            {
+              url: "/recordings/session?t=5000",
+              start_ms: 5000,
+              end_ms: 8000,
+              request_ids: ["b"],
+            },
+          ],
+        },
+      }}
+      teacher={false}
+      open={false}
+      onOpen={() => {}}
+    />,
+  );
+  expect(
+    screen.getByRole("link", { name: /Suggested recording excerpt 1/ }),
+  ).toHaveAttribute("href", "/recordings/session?t=1000");
+  expect(
+    screen.getByRole("link", { name: /Suggested recording excerpt 2/ }),
+  ).toHaveAttribute("href", "/recordings/session?t=5000");
+  expect(
+    screen.queryByRole("link", { name: "Search lecture" }),
+  ).not.toBeInTheDocument();
+});
+
+test("retained original feedback offers explicit single-attempt retry", async () => {
+  const fetcher = vi.fn().mockImplementation((path: string) =>
+    Promise.resolve(
+      new Response(
+        JSON.stringify(
+          path.endsWith("/reprocess")
+            ? { status: "queued" }
+            : {
+                groups: [],
+                ai_jobs: [],
+                feedback: [
+                  {
+                    id: "f",
+                    author: "Student",
+                    text_original: "More detail would help",
+                    text_rewritten: null,
+                    classification: "unclassified",
+                    ai_modified: false,
+                    linked_question_id: null,
+                    processing_status: "original_retained",
+                  },
+                ],
+              },
+        ),
+      ),
+    ),
+  );
+  vi.stubGlobal("fetch", fetcher);
+  wrap(<LecturerQueue sessionId="s" />);
+  fireEvent.click(screen.getByText("Poll feedback & AI processing"));
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Retry note processing" }),
+  );
+  await waitFor(() =>
+    expect(
+      fetcher.mock.calls.some(
+        (call) => call[0] === "/api/v1/feedback/f/reprocess",
+      ),
+    ).toBe(true),
+  );
+  expect(screen.getByText("More detail would help")).toBeVisible();
 });

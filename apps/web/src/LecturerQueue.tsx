@@ -7,6 +7,7 @@ type Group = {
   id: string | null;
   canonical_text: string;
   questions: Question[];
+  review_pending?: boolean;
 };
 type Queue = {
   groups: Group[];
@@ -18,6 +19,7 @@ type Queue = {
     classification: string;
     ai_modified: boolean;
     linked_question_id: string | null;
+    processing_status?: string;
   }[];
   ai_jobs: { type: string; status: string; error: string | null }[];
 };
@@ -36,6 +38,9 @@ export default function LecturerQueue({ sessionId }: { sessionId: string }) {
   });
   const routeFeedback = useAction((id: string) =>
     api(`/feedback/${id}/route`, {}),
+  );
+  const retryFeedback = useAction((id: string) =>
+    api(`/feedback/${id}/reprocess`, {}),
   );
   const availableIds = new Set(
     q.data?.groups.flatMap((group) =>
@@ -146,10 +151,17 @@ export default function LecturerQueue({ sessionId }: { sessionId: string }) {
             <div className="actions">
               <button
                 className="text-button"
+                disabled={g.review_pending || resolve.isPending}
                 onClick={() => resolve.mutate(g.id!)}
               >
                 Mark group answered
               </button>
+              {g.review_pending && (
+                <p className="muted small">
+                  Automatic group awaiting verification. Individual questions
+                  remain available.
+                </p>
+              )}
               {g.questions.length > 1 && (
                 <button
                   className="text-button"
@@ -208,10 +220,26 @@ export default function LecturerQueue({ sessionId }: { sessionId: string }) {
               <strong>{f.author}</strong> · Lecturers only
             </p>
             <p className="feedback-original">{f.text_original}</p>
+            {f.processing_status === "original_retained" && (
+              <div className="spaced">
+                <p className="muted small">
+                  Original note retained for review; its requests could not be
+                  extracted reliably.
+                </p>
+                <button
+                  className="text-button"
+                  disabled={retryFeedback.isPending}
+                  onClick={() => retryFeedback.mutate(f.id)}
+                >
+                  Retry note processing
+                </button>
+              </div>
+            )}
             <p className="muted small">
               {f.linked_question_id
                 ? "Question sent to the private queue"
-                : f.classification === "unclassified"
+                : f.classification === "unclassified" &&
+                    f.processing_status !== "original_retained"
                   ? "Awaiting classification"
                   : "Feedback"}
             </p>
@@ -227,6 +255,7 @@ export default function LecturerQueue({ sessionId }: { sessionId: string }) {
           </div>
         ))}
         <Failure error={routeFeedback.error} />
+        <Failure error={retryFeedback.error} />
         {q.data?.ai_jobs
           .filter((j) => j.status === "failed" || j.status === "queued")
           .map((j, i) => (

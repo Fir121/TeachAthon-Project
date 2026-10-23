@@ -98,10 +98,12 @@ test("grouped source links, exact pages and explicit preflight controls", async 
     await expect(page.locator(".match-card")).toHaveCount(1);
     await page
       .getByLabel("Search words", { exact: true })
-      .fill("binary search recursion");
+      .fill("photosynthesis chlorophyll");
     await page.getByRole("button", { name: "Search", exact: true }).click();
+    await expect(page.getByText(/No suitable source found/)).toBeVisible({
+      timeout: 25000,
+    });
     await expect(page.locator(".match-card")).toHaveCount(0);
-    await expect(page.getByText(/No suitable source found/)).toBeVisible();
     await page.goto(`/courses/${cid}/discussions`);
     await page
       .getByRole("button", { name: "Ask a question", exact: true })

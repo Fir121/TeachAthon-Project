@@ -23,7 +23,7 @@ export default function Search({ courseId }: { courseId: string }) {
         Find resources, recorded teaching, and public discussions.
       </p>
       <p className="muted small spaced">
-        All search words must match. Use fewer words to broaden your results.
+        Find sources that explain these concepts, including equivalent wording.
       </p>
       <form
         className="search-form spaced"

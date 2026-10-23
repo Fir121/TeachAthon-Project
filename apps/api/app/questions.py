@@ -1,7 +1,6 @@
 import hashlib
 import json
 import os
-import re
 import secrets
 from fastapi import APIRouter, HTTPException, Query
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
@@ -9,8 +8,7 @@ from pydantic import BaseModel, Field, ConfigDict
 from typing import Literal
 from uuid import UUID, uuid4
 from sqlalchemy import select, func
-from .config import settings
-from .models import Question, QuestionVote, Answer, Resource, User, LiveSession, Lecture, Course, now
+from .models import Question, QuestionVote, Answer, User, LiveSession, Lecture, Course, now
 from .security import DB, Actor, member
 from .materials import require, private_path
 from .classroom import live, emit
@@ -54,49 +52,6 @@ def fingerprint(cid, data):
     return hashlib.sha256(json.dumps(raw, sort_keys=True).encode()).hexdigest()
 
 
-def words(text):
-    stop = {
-        "what",
-        "when",
-        "where",
-        "which",
-        "there",
-        "their",
-        "about",
-        "could",
-        "would",
-        "should",
-        "please",
-        "explain",
-        "does",
-        "with",
-        "this",
-        "that",
-        "from",
-        "have",
-        "into",
-        "your",
-        "then",
-        "than",
-        "they",
-        "them",
-        "the",
-        "and",
-        "are",
-        "for",
-        "how",
-        "why",
-        "can",
-        "you",
-    }
-    return {w for w in re.findall(r"[a-z0-9]+", text.lower()) if len(w) > 2 and w not in stop}
-
-
-def lexical_score(query, text):
-    a, b = words(query), words(text)
-    return len(a & b) / len(a) if a else 0
-
-
 from .ai.retrieval import PreflightResponse, SearchResponse
 
 
@@ -112,11 +67,12 @@ def preflight(cid: str, data: PreflightInput, db: DB, user: Actor):
 
     error = None
     generated = None
-    method = "course keyword search"
+    method = "Course source search"
     try:
         matches, warnings = asyncio.run(search(db, cid, data.text))
-        if settings().openai_api_key:
-            method = "semantic and keyword course search"
+        method = getattr(matches, "method", "Course source search")
+        if not getattr(matches, "complete", not warnings) and not warnings:
+            warnings = ["Source evaluation is incomplete. Retry or review before posting."]
         if warnings:
             error = " ".join(warnings)
         try:
@@ -126,6 +82,8 @@ def preflight(cid: str, data: PreflightInput, db: DB, user: Actor):
     except Exception:
         matches = []
         error = "Source search is unavailable or timed out. Retry or post your question anyway."
+    db.expire_all()
+    member(db, cid, user)
     proof = signer().dumps(
         {
             "fingerprint": fingerprint(cid, data),
@@ -190,6 +148,23 @@ def question_json(db, q, user, teacher):
         if q.visibility == "public"
         else None
     )
+    match = q.match_json
+    if (
+        match.get("state") == "ready"
+        and not match.get("lecturer_selected")
+        and match.get("version") != "semantic-window-coverage-v1"
+    ):
+        match = (
+            {
+                **match,
+                "state": "legacy",
+                "message": "Earlier suggested passage; complete answer coverage has not been rechecked.",
+            }
+            if teacher
+            else {"state": "unavailable"}
+        )
+    elif not teacher and match.get("possibly_addressed"):
+        match = {"state": "unavailable"}
     return {
         "id": q.id,
         "course_id": q.course_id,
@@ -209,7 +184,7 @@ def question_json(db, q, user, teacher):
         "can_delete": teacher or (not q.anonymous and q.author_id == user.id),
         "votes": votes,
         "my_vote": bool(db.get(QuestionVote, (q.id, user.id))),
-        "match": q.match_json if teacher or not q.match_json.get("possibly_addressed") else {"state": "unavailable"},
+        "match": match,
     }
 
 
@@ -317,6 +292,16 @@ def edit_question(qid: str, data: QuestionEdit, db: DB, user: Actor):
 
     db.execute(delete(SourceChunk).where(SourceChunk.question_id == qid))
     q.edited_at = now()
+    q.request_parts = []
+    if q.cluster_id:
+        from .models import Cluster
+
+        previous_cluster = q.cluster_id
+        cluster = db.get(Cluster, previous_cluster)
+        q.cluster_id = None
+        if cluster and cluster.manual:
+            q.auto_grouping_disabled = True
+        dissolve_small_groups(db, [previous_cluster])
     question_event(db, q, "question.updated")
     from .ai.retrieval import enqueue_index
 
@@ -453,6 +438,8 @@ def course_search(cid: str, db: DB, user: Actor, q: str = Query(min_length=1, ma
         matches, warnings = asyncio.run(search(db, cid, q, mode="keywords"))
     except Exception:
         raise HTTPException(503, "Course search timed out or is unavailable. Retry your search.") from None
+    db.expire_all()
+    member(db, cid, user)
     return {"matches": matches, "warnings": warnings}
 
 

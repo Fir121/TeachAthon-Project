@@ -25,7 +25,7 @@ def test_keyword_precision_and_inflections(query, text, expected):
     assert (keyword_match(query, text, "") is not None) == expected
 
 
-def test_keyword_results_reject_partial_hits_and_do_not_call_embeddings(room, monkeypatch):
+def test_keyword_fallback_rejects_partial_hits_and_reports_provider_failure(room, monkeypatch):
     teacher, student, outsider, factory, cid, _, _, _ = room
     with factory() as db:
         resource = db.scalar(select(Resource).where(Resource.course_id == cid))
@@ -72,7 +72,7 @@ def test_keyword_results_reject_partial_hits_and_do_not_call_embeddings(room, mo
     for term in ["recursion", "recursive", "AI"]:
         result = student.get(f"/api/v1/courses/{cid}/search", params={"q": term}).json()
         assert result["matches"][0]["locations"][0]["page_number"] == 3
-        assert result["warnings"] == []
+        assert result["warnings"] and "incomplete" in result["warnings"][0]
     # Match renamed files immediately, without claiming the title names a particular page.
     with factory() as db:
         db.get(Resource, resource.id).original_filename = "Lecture on Algebra.pdf"

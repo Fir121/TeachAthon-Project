@@ -33,7 +33,7 @@ Clean modern education SaaS inspired by EdStem and University of Edinburgh gener
 
 Profile avatar opens a browser-history-backed profile dialog with picture preview/upload/remove. Course settings manage a course banner; lecture setup has a banner dialog. Actual images appear on course cards/headers and lecture cards/setup/archive, with neutral icon fallbacks when absent. Upload help and errors remain next to the controls.
 
-Course Search asks for **Search words**, supports a single word or short technical term and explains that all significant words must match. Query terms are stemmed locally; phrases/nearby terms rank higher; missing terms do not produce vague semantic-only substitutes. Existing question and poll-note preflight still accepts questions.
+Course Search asks for **Search words**, supports a single word or technical acronym and uses shared semantic source assessment with question preflight. Synonymous definitions can qualify; merely related sources and wrong technical constraints are rejected. Degraded keyword fallback is labelled. Notes send directly without any preflight.
 
 Archive navigation, eyebrow and title occupy separate rows. Saved annotation/clear events are replayed at audio time, including when seeking backward. New ink coordinates refer to the slide image instead of its surrounding letterboxed frame; older events retain their original format.
 
@@ -48,3 +48,7 @@ Move to discussions replaces Dismiss and hides a question only from live queues;
 Manual queue grouping starts with **Group questions**; selection checkboxes appear only in that mode. Hover/help explains that automatic AI grouping already runs and this control allows manual grouping. Save requires two questions; Cancel/Escape clears selection. Poll feedback has no redundant “Original feedback” tag. Multiple requests in one note remain visible as separate paragraphs in its single private queue entry; the full original stays inspectable.
 
 Split group restores ordinary question cards with their individual Mark answered action, without group headings or Mark group answered. A lone visible question never shows bulk group controls, including when the other members are hidden by the queue filter. Split decisions remain respected by automatic grouping; lecturers can explicitly regroup questions later.
+
+## Semantic processing — 2026-10-23
+
+Feedback accounts for the entire note in one model pass; requests appear together in one private question, with unchanged original feedback always readable. An uncertain extraction retains the original and offers explicit retry. Grouping keeps every card visible, verifies every member/request and leaves uncertain/different teaching needs separate. Older auto groups awaiting review cannot be bulk-answered; individual answer actions remain available. Complete multi-request recording coverage can link several passages. Partial matches are lecturer-only review material, with the whole-recording answer fallback retained. Earlier unchecked suggestions have review/recheck/adjust/remove controls; human-selected ranges remain protected. Outlines show actual all-section processing/partial status and saved progress.

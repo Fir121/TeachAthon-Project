@@ -16,6 +16,7 @@ from .ingest import ingest, extract_document, queue_backfill
 from .audio import assemble
 from .ai.retrieval import index_resource, index_session, index_question
 from .intelligence import topic_job, grouping_job, feedback_job, match_job, outline_job
+from .ai.grouping import verify_group_job, queue_semantic_backfill
 
 HANDLERS = {
     "infer_topic": topic_job,
@@ -23,6 +24,7 @@ HANDLERS = {
     "classify_feedback": feedback_job,
     "match_answer_excerpt": match_job,
     "generate_outline": outline_job,
+    "verify_question_group": verify_group_job,
     "ingest_document": ingest,
     "extract_document": extract_document,
     "assemble_recording": assemble,
@@ -116,6 +118,7 @@ if __name__ == "__main__":
     signal.signal(signal.SIGINT, lambda *_: shutdown.set())
     with SessionLocal() as db:
         queue_backfill(db)
+        queue_semantic_backfill(db)
     while not shutdown.is_set():
         try:
             if not run_once():

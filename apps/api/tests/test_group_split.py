@@ -8,7 +8,8 @@ from alembic.operations import Operations
 from sqlalchemy import select, text
 from test_classroom import room, post_question
 from app.ai.providers.openai import OpenAIEmbeddings, OpenAIText
-from app.intelligence import Equivalent, group_question
+from app.intelligence import group_question
+from semantic_fixtures import group_decision
 from app.models import Cluster, Question, SessionEvent
 
 
@@ -86,13 +87,14 @@ def test_delayed_automatic_group_result_cannot_undo_a_manual_split(room, monkeyp
         post_question(s, cid, sid, wording)["id"] for wording in ["Explain binary search", "Explain interval search"]
     ]
 
-    async def vectors(*_):
-        return [[1.0, 0.0], [1.0, 0.0]]
+    async def vectors(self, texts, **kwargs):
+        return [[1.0, 0.0] for _ in texts]
 
-    async def delayed(*_):
+    async def delayed(self, prompt, schema, **kwargs):
+        decision = group_decision(prompt)
         gid = t.post(f"/api/v1/sessions/{sid}/clusters", json={"question_ids": ids}).json()["id"]
         assert t.post(f"/api/v1/clusters/{gid}/split", json={"question_ids": ids}).status_code == 200
-        return Equivalent(same_answer=True)
+        return decision
 
     monkeypatch.setattr(OpenAIEmbeddings, "embed", vectors)
     monkeypatch.setattr(OpenAIText, "structured", delayed)
@@ -130,11 +132,11 @@ def test_automatic_grouping_still_groups_eligible_questions(room, monkeypatch):
         post_question(s, cid, sid, wording)["id"] for wording in ["Explain binary search", "Explain interval search"]
     ]
 
-    async def vectors(*_):
-        return [[1.0, 0.0], [1.0, 0.0]]
+    async def vectors(self, texts, **kwargs):
+        return [[1.0, 0.0] for _ in texts]
 
-    async def equivalent(*_):
-        return Equivalent(same_answer=True)
+    async def equivalent(self, prompt, schema, **kwargs):
+        return group_decision(prompt)
 
     monkeypatch.setattr(OpenAIEmbeddings, "embed", vectors)
     monkeypatch.setattr(OpenAIText, "structured", equivalent)

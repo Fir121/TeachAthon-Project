@@ -16,3 +16,5 @@
 13. Any change to AI behaviour (including OCR/chunking, prompts, retrieval, provider inputs, storage, visibility, timeouts or user interactions) must update `docs/AI_WORKFLOW.md` in the same change. It is the canonical implementation reference; `AI_WORKFLOW_REVIEW.md` is only a pointer.
 
 14. Owner revision 2026-10-22: new direct questions/replies are named and course-public; preserve historical private/anonymous records. New feedback is named to lecturers and stays lecturer-only, including inferred questions. Only authors edit wording; lecturers moderate/delete. Post question auto-submits only after a complete warning-free empty preflight; matches/failures require confirmation. At most one live lecture per course.
+
+15. Owner revision 2026-10-23: regex/lexical heuristics may support cheap checks, candidate recall or explicit last-resort fallback; they must not be the sole semantic interpretation/relevance solution. Feedback uses one strengthened model pass per attempt, not a second verifier call. Automatic grouping favours precision: uncertain/distinct teaching needs remain separate and all questions stay visible. Keep quality checks small and practical.

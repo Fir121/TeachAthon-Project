@@ -9,6 +9,7 @@ from test_classroom import room, post_question
 from app.models import Question, Feedback, LiveSession
 from app.intelligence import classify_feedback, Classification
 from app.ai.providers.openai import OpenAIText
+from semantic_fixtures import note_result
 
 
 def test_move_keeps_public_discussion_search_and_resolution(room):
@@ -84,9 +85,11 @@ def test_notes_send_directly_and_only_meaningful_question_words_change(
     assert s.post(f"/api/v1/polls/{pid}/feedback", json={"text": original}).status_code == 202
 
     async def classify(*_):
-        return Classification(
+        return note_result(
+            original,
+            [{"source_quote": original, "question": rewrite}] if classification == "question" else [],
             classification=classification,
-            requests=[{"source_quote": original, "question": rewrite}] if classification == "question" else [],
+            change_kind="clarified" if changed else "unchanged",
         )
 
     monkeypatch.setattr(OpenAIText, "structured", classify)
