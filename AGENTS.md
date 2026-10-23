@@ -14,3 +14,5 @@
 12. Do not use any copyrighted university lecture recordings without suitable authorisation. External demo data must be permissioned / licensed and credited; never ship third-party material in git by default.
 
 13. Any change to AI behaviour (including OCR/chunking, prompts, retrieval, provider inputs, storage, visibility, timeouts or user interactions) must update `docs/AI_WORKFLOW.md` in the same change. It is the canonical implementation reference; `AI_WORKFLOW_REVIEW.md` is only a pointer.
+
+14. Owner revision 2026-10-22: new direct questions/replies are named and course-public; preserve historical private/anonymous records. New feedback is named to lecturers and stays lecturer-only, including inferred questions. Only authors edit wording; lecturers moderate/delete. Post question auto-submits only after a complete warning-free empty preflight; matches/failures require confirmation. At most one live lecture per course.

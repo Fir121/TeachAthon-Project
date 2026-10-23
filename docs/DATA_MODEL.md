@@ -54,3 +54,7 @@ Use PostgreSQL UUID primary keys, timestamptz timestamps, proper FKs / CASCADE o
 ## Implemented pictures and ink coordinates (migration 0011)
 
 Nullable `users.avatar_key`, `courses.banner_key` and `lectures.banner_key` reference private normalized image derivatives. API DTOs expose authenticated versioned URLs, never those storage keys. Photo uploads are not resources/source chunks and add no author link to anonymous questions. New `annotation.added` JSON includes `coordinates=slide`; older/missing markers are interpreted as `stage`. Both formats retain normalized points, slide index, timestamp and clear events in the same ordered event log.
+
+## Named submissions and live limits (migration 0012)
+
+`questions.submission_id` is a nullable UUID with uniqueness across course/author/submission for retry deduplication; legacy records remain NULL. New direct questions always store the authenticated author, `anonymous=false`, `visibility=public`. Replies inherit parent visibility and authenticated author. Existing anonymity/visibility columns and constraints protect legacy records and private feedback questions. `poll_feedback.author_id` is nullable with an on-delete SET NULL user FK; new notes store their sender, old notes remain NULL. Classification/manual routing copy the saved author without reconstructing missing identities. A partial unique index on `lecture_sessions.course_id WHERE state='live'` enforces one live lecture per course. Migration refuses existing duplicate-live courses before changing schema; no sessions are implicitly ended.

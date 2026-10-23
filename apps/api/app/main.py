@@ -39,7 +39,11 @@ async def request_boundary(request: Request, call_next):
 @app.exception_handler(HTTPException)
 async def http_error(request, exc):
     return JSONResponse(
-        {"code": f"http_{exc.status_code}", "message": exc.detail, "request_id": request.state.request_id},
+        {
+            "code": f"http_{exc.status_code}",
+            **(exc.detail if isinstance(exc.detail, dict) else {"message": exc.detail}),
+            "request_id": request.state.request_id,
+        },
         status_code=exc.status_code,
     )
 

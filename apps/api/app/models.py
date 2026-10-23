@@ -137,6 +137,15 @@ class LiveSession(Base):
     context_paused: Mapped[bool] = mapped_column(default=False)
     poll_config: Mapped[dict] = mapped_column(JSON, default=dict)
     topic_json: Mapped[dict | None] = mapped_column(JSON)
+    __table_args__ = (
+        Index(
+            "one_live_session_per_course",
+            "course_id",
+            unique=True,
+            postgresql_where=text("state = 'live'"),
+            sqlite_where=text("state = 'live'"),
+        ),
+    )
 
 
 class SessionEvent(Base):
@@ -190,6 +199,7 @@ class Question(Base):
     body_display: Mapped[str]
     ai_modified: Mapped[bool] = mapped_column(default=False)
     author_id: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    submission_id: Mapped[str | None] = mapped_column(Uuid(as_uuid=False))
     anonymous: Mapped[bool]
     visibility: Mapped[str]
     state: Mapped[str] = mapped_column(default="open")
@@ -198,6 +208,7 @@ class Question(Base):
     match_json: Mapped[dict] = mapped_column(JSON, default=lambda: {"state": "unavailable"})
     cluster_id: Mapped[str | None] = mapped_column(ForeignKey("question_clusters.id", ondelete="SET NULL"))
     __table_args__ = (
+        UniqueConstraint("course_id", "author_id", "submission_id", name="question_submission_once"),
         CheckConstraint("NOT anonymous OR author_id IS NULL"),
         CheckConstraint("visibility IN ('public','private')"),
     )
@@ -306,6 +317,7 @@ class Cluster(Base):
 
 class Feedback(Base):
     __tablename__ = "poll_feedback"
+    author_id: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=uid)
     poll_id: Mapped[str] = mapped_column(ForeignKey("polls.id", ondelete="CASCADE"))
     text_original: Mapped[str]

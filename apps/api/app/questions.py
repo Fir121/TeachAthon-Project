@@ -5,10 +5,12 @@ import re
 import secrets
 from fastapi import APIRouter, HTTPException, Query
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
+from typing import Literal
+from uuid import UUID, uuid4
 from sqlalchemy import select, func
 from .config import settings
-from .models import Question, QuestionVote, Answer, Resource, User, LiveSession, now
+from .models import Question, QuestionVote, Answer, Resource, User, LiveSession, Course, now
 from .security import DB, Actor, member
 from .materials import require, private_path
 from .classroom import live, emit
@@ -30,8 +32,9 @@ def signer():
 
 class PreflightInput(BaseModel):
     text: str = Field(min_length=3, max_length=8000)
-    visibility: str = Field(default="public", pattern="^(public|private)$")
-    anonymous: bool = False
+    model_config = ConfigDict(extra="forbid")
+    purpose: Literal["question", "feedback"] = "question"
+    submission_id: UUID | None = None
     session_id: str | None = None
 
 
@@ -43,8 +46,8 @@ def fingerprint(cid, data):
     raw = {
         "course_id": cid,
         "text": data.text,
-        "visibility": data.visibility,
-        "anonymous": data.anonymous,
+        "purpose": data.purpose,
+        "submission_id": str(data.submission_id) if data.submission_id else None,
         "session_id": data.session_id,
     }
     return hashlib.sha256(json.dumps(raw, sort_keys=True).encode()).hexdigest()
@@ -122,7 +125,14 @@ def preflight(cid: str, data: PreflightInput, db: DB, user: Actor):
     except Exception:
         matches = []
         error = "Source search is unavailable or timed out. Retry or post your question anyway."
-    proof = signer().dumps({"fingerprint": fingerprint(cid, data), "failed": bool(error)})
+    proof = signer().dumps(
+        {
+            "fingerprint": fingerprint(cid, data),
+            "failed": bool(error),
+            "actor_id": user.id,
+            "submission_id": str(data.submission_id or uuid4()),
+        }
+    )
     return {
         "preflight_token": proof,
         "status": "failed" if error else "complete",
@@ -175,7 +185,8 @@ def question_json(db, q, user, teacher):
         "visibility": q.visibility,
         "state": q.state,
         "created_at": q.created_at,
-        "can_edit": teacher or (not q.anonymous and q.author_id == user.id),
+        "can_edit": not q.anonymous and q.author_id == user.id,
+        "can_delete": teacher or (not q.anonymous and q.author_id == user.id),
         "votes": votes,
         "my_vote": bool(db.get(QuestionVote, (q.id, user.id))),
         "match": q.match_json if teacher or not q.match_json.get("possibly_addressed") else {"state": "unavailable"},
@@ -196,13 +207,13 @@ def question_access(db, qid, user, teacher_only=False, author_write=False, lock=
     return q, m
 
 
-def question_event(db, q, kind):
+def question_event(db, q, kind, private=False):
     from .ai.retrieval import enqueue_index
 
     enqueue_index(db, q.course_id, q.id, "index_question")
     if q.session_id:
         session = db.scalar(select(LiveSession).where(LiveSession.id == q.session_id).with_for_update())
-        emit(db, session, kind, {"id": q.id}, "lecturer" if q.visibility == "private" else "course")
+        emit(db, session, kind, {"id": q.id}, "lecturer" if private or q.visibility == "private" else "course")
 
 
 @router.post("/courses/{cid}/questions", status_code=201)
@@ -210,10 +221,26 @@ def create_question(cid: str, data: QuestionInput, db: DB, user: Actor):
     member(db, cid, user)
     try:
         proof = signer().loads(data.preflight_token, max_age=600)
-        if proof["fingerprint"] != fingerprint(cid, data):
+        if (
+            proof["fingerprint"] != fingerprint(cid, data)
+            or proof.get("actor_id") != user.id
+            or data.purpose != "question"
+        ):
             raise BadSignature("mismatch")
     except (BadSignature, SignatureExpired, KeyError):
         raise HTTPException(409, "Search course sources for this question before posting. The check may have expired.")
+    # Serialize retries with creation; retain the original result even after the session ends.
+    db.scalar(select(Course).where(Course.id == cid).with_for_update())
+    submission_id = str(data.submission_id or proof["submission_id"])
+    existing = db.scalar(
+        select(Question).where(
+            Question.course_id == cid, Question.author_id == user.id, Question.submission_id == submission_id
+        )
+    )
+    if existing:
+        if existing.body_original != data.text or existing.session_id != data.session_id:
+            raise HTTPException(409, "This submission identifier was already used for another question.")
+        return question_json(db, existing, user, member(db, cid, user).role == "lecturer")
     if data.session_id:
         session, _ = live(db, data.session_id, user, active=True, lock=True)
         if session.course_id != cid:
@@ -223,9 +250,10 @@ def create_question(cid: str, data: QuestionInput, db: DB, user: Actor):
         session_id=data.session_id,
         body_original=data.text,
         body_display=data.text,
-        author_id=None if data.anonymous else user.id,
-        anonymous=data.anonymous,
-        visibility=data.visibility,
+        author_id=user.id,
+        submission_id=submission_id,
+        anonymous=False,
+        visibility="public",
     )
     db.add(q)
     db.flush()
@@ -234,7 +262,6 @@ def create_question(cid: str, data: QuestionInput, db: DB, user: Actor):
 
     enqueue_index(db, cid, q.id, "group_questions")
     db.commit()
-    # Anonymous submissions persist no requester identifier, preflight record or audit linkage.
     return question_json(db, q, user, member(db, cid, user).role == "lecturer")
 
 
@@ -260,8 +287,8 @@ class QuestionEdit(BaseModel):
 @router.patch("/questions/{qid}")
 def edit_question(qid: str, data: QuestionEdit, db: DB, user: Actor):
     q, m = question_access(db, qid, user, author_write=True, lock=True)
-    if m.role != "lecturer" and (q.anonymous or q.author_id != user.id):
-        raise HTTPException(403, "Only named authors or course lecturers can edit this question.")
+    if q.anonymous or q.author_id != user.id:
+        raise HTTPException(403, "Only the author can edit this question.")
     q.body_display = data.text
     if not q.ai_modified:
         q.body_original = data.text
@@ -283,7 +310,7 @@ def delete_question(qid: str, db: DB, user: Actor):
     q, m = question_access(db, qid, user, author_write=True, lock=True)
     if m.role != "lecturer" and (q.anonymous or q.author_id != user.id):
         raise HTTPException(403, "Only named authors or course lecturers can delete this question.")
-    question_event(db, q, "question.updated")
+    question_event(db, q, "question.deleted")
     db.delete(q)
     db.commit()
 
@@ -335,21 +362,18 @@ def dismiss(qid: str, db: DB, user: Actor):
 
 class AnswerInput(BaseModel):
     body: str = Field(min_length=1, max_length=8000)
-    visibility: str = Field(default="public", pattern="^(public|private)$")
-    anonymous: bool = False
+    model_config = ConfigDict(extra="forbid")
 
 
 @router.post("/questions/{qid}/answer", status_code=201)
 @router.post("/questions/{qid}/comments", status_code=201)
 def answer(qid: str, data: AnswerInput, db: DB, user: Actor):
     q, m = question_access(db, qid, user, lock=True)
-    if m.role != "lecturer" and data.visibility == "private":
-        raise HTTPException(403, "Only lecturers can add a private written answer.")
-    visibility = "private" if q.visibility == "private" else data.visibility
+    visibility = q.visibility
     a = Answer(
         question_id=qid,
-        author_id=None if data.anonymous else user.id,
-        anonymous=data.anonymous,
+        author_id=user.id,
+        anonymous=False,
         body=data.body,
         visibility=visibility,
         lecturer_authored=m.role == "lecturer",
@@ -360,8 +384,9 @@ def answer(qid: str, data: AnswerInput, db: DB, user: Actor):
     from .ai.retrieval import enqueue_index
 
     enqueue_index(db, q.course_id, q.id, "index_question")
-    if visibility == "public":
-        question_event(db, q, "question.answered" if m.role == "lecturer" else "question.updated")
+    question_event(db, q, "reply.created")
+    if m.role == "lecturer":
+        question_event(db, q, "question.answered")
     db.commit()
     return {"id": a.id}
 
@@ -378,7 +403,8 @@ def answers(qid: str, db: DB, user: Actor):
             "body": a.body,
             "visibility": a.visibility,
             "lecturer_authored": a.lecturer_authored,
-            "can_edit": m.role == "lecturer" or (not a.anonymous and a.author_id == user.id),
+            "can_edit": not a.anonymous and a.author_id == user.id,
+            "can_delete": m.role == "lecturer" or (not a.anonymous and a.author_id == user.id),
             "author": db.get(User, a.author_id).name if a.author_id else "Anonymous",
             "created_at": a.created_at,
         }
@@ -415,8 +441,8 @@ def edit_reply(aid: str, data: ReplyEdit, db: DB, user: Actor):
     q, m = question_access(db, a.question_id, user, lock=True)
     if a.visibility == "private" and m.role != "lecturer":
         raise HTTPException(404, "Reply not available.")
-    if m.role != "lecturer" and (a.anonymous or a.author_id != user.id):
-        raise HTTPException(403, "Only a named author or lecturer can edit this reply.")
+    if a.anonymous or a.author_id != user.id:
+        raise HTTPException(403, "Only the author can edit this reply.")
     a.body = data.body
     from .models import SourceChunk
     from sqlalchemy import delete
@@ -425,6 +451,7 @@ def edit_reply(aid: str, data: ReplyEdit, db: DB, user: Actor):
     from .ai.retrieval import enqueue_index
 
     enqueue_index(db, q.course_id, q.id, "index_question")
+    question_event(db, q, "reply.updated", private=a.visibility == "private")
     db.commit()
     return {"updated": True}
 
@@ -438,6 +465,7 @@ def delete_reply(aid: str, db: DB, user: Actor):
     if m.role != "lecturer" and (a.anonymous or a.author_id != user.id):
         raise HTTPException(403, "Only a named author or lecturer can delete this reply.")
     db.delete(a)
+    question_event(db, q, "reply.deleted", private=a.visibility == "private")
     from .ai.retrieval import enqueue_index
 
     enqueue_index(db, q.course_id, q.id, "index_question")

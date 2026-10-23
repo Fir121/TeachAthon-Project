@@ -14,7 +14,7 @@
 
 ## M2 — Live presenter and realtime student experience
 - Live session start/end, join QR/code, presenter slide navigation fullscreen, optional annotation events, instructor separate control room and student compact responsive companion. WebSocket events with snapshot/reconnect; shared DB state.
-- Poll lifecycle with manual trigger, 4-option voting, latest vote upsert, close/supersede and history, aggregate instructor dashboard. Questions basic public/private and anonymous/named, upvote, lecturer moderation; in-app update notification. At this stage connect preflight with explicit pending implementation status, but do not fake AI; before M4 it can be a genuine resource keyword matching baseline with clearly labelled retrieval.
+- Poll lifecycle with manual trigger, 4-option voting, latest vote upsert, close/supersede and history, aggregate instructor dashboard. New questions named and course-public (legacy private/anonymous protections retained), upvote, lecturer moderation; in-app update notification. At this stage connect preflight with explicit pending implementation status, but do not fake AI; before M4 it can be a genuine resource keyword matching baseline with clearly labelled retrieval.
 - Gate: two browsers/mobile + lecturer see exact same slide, poll votes consistent after refresh, private content invisible, named edit/delete and anonymous nonedit enforced.
 
 ## M3 — Audio recording + live captions + replay
@@ -32,7 +32,7 @@
 - Gate: topic transition intelligently prompts a poll at sensible checkpoint, question variants cluster, resolved lecturer group updates underlying Qs, previous teacher audio discovered/replayed on future query.
 
 ## M6 — Forum, polish, deployment and true E2E
-- Full course forum: post/reply, public/private, named/anonymous, sorting/votes, lecturer moderation, automatic carry-over from live, source preflight and search. Search across authorised resources/forums/recordings. On-VM HTTPS deployment instructions, backups, media limits, error handling.
+- Full course forum: named course-public post/reply, protected legacy/feedback threads, sorting/votes, lecturer moderation, automatic carry-over from live, source preflight and search. Search across authorised resources/forums/recordings. On-VM HTTPS deployment instructions, backups, media limits, error handling.
 - Gate: entire user journey in browser from signup/course upload/live mic slide poll/Q&A through end recording/forum/RAG and playback; tests run, all buttons working, request isolation verified, docker compose deployment tested.
 
 ## M7 — Only after real app works: licensed replay/demo

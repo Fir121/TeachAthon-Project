@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import {
   Link,
   NavLink,
@@ -680,6 +680,9 @@ function Resources() {
 }
 function Lectures() {
   const { id, teacher } = useCourse();
+  const [selectedDeck, setSelectedDeck] = useState("");
+  const [uploadedId, setUploadedId] = useState<string | null>(null);
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
   const dialog = useDialog();
   const lectures = useQuery({
     queryKey: ["lectures", id],
@@ -690,7 +693,28 @@ function Lectures() {
     queryKey: ["resources", id],
     queryFn: () => api<Resource[]>(`/courses/${id}/resources`),
     enabled: teacher,
+    refetchInterval: uploadedId ? 2000 : false,
   });
+  const uploaded = resources.data?.find((r) => r.id === uploadedId);
+  useEffect(() => {
+    if (uploaded?.process_status === "ready" && uploaded.page_count > 0)
+      setSelectedDeck(uploaded.id);
+  }, [uploaded?.id, uploaded?.process_status, uploaded?.page_count]);
+  const upload = useAction((file: File) => {
+    const data = new FormData();
+    data.set("file", file);
+    return api<Resource>(`/courses/${id}/resources`, data);
+  });
+  const retry = useAction(() => api(`/resources/${uploadedId}/reprocess`, {}));
+  function uploadSlides(file: File) {
+    setUploadFile(file);
+    upload.mutate(file, {
+      onSuccess: (resource) => {
+        setUploadedId(resource.id);
+        setSelectedDeck("");
+      },
+    });
+  }
   const create = useAction((data: Record<string, FormDataEntryValue>) =>
     api(`/courses/${id}/lectures`, data),
   );
@@ -706,6 +730,11 @@ function Lectures() {
             className="primary"
             onClick={(e) => {
               create.reset();
+              upload.reset();
+              retry.reset();
+              setUploadedId(null);
+              setUploadFile(null);
+              setSelectedDeck("");
               dialog.open("create-lecture", e.currentTarget);
             }}
           >
@@ -730,11 +759,16 @@ function Lectures() {
           >
             <label>
               Lecture title
-              <input autoFocus name="title" required maxLength={200} />
+              <input autoFocus name="title" required maxLength={180} />
             </label>
             <label>
               Prepared slide deck
-              <select name="slide_resource_id" required>
+              <select
+                name="slide_resource_id"
+                required
+                value={selectedDeck}
+                onChange={(e) => setSelectedDeck(e.target.value)}
+              >
                 <option value="">Choose a processed deck</option>
                 {resources.data
                   ?.filter(
@@ -750,13 +784,88 @@ function Lectures() {
                   ))}
               </select>
             </label>
-            <p className="muted small">
-              Upload a PDF or PowerPoint in Resources first. Live slides require
-              a prepared deck.
-            </p>
-            <Failure error={create.error || resources.error} />
+            <div className="slide-upload spaced">
+              <label>
+                Upload slides
+                <input
+                  type="file"
+                  accept=".pdf,.ppt,.pptx,application/pdf,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation"
+                  disabled={upload.isPending}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) uploadSlides(file);
+                    e.target.value = "";
+                  }}
+                />
+              </label>
+              <p className="muted small">
+                PDF or PowerPoint. Your file is also saved in Resources. You can
+                create the lecture as soon as slides are prepared; search
+                indexing can finish later.
+              </p>
+              {!resources.isPending &&
+                !resources.data?.some(
+                  (r) =>
+                    r.process_status === "ready" &&
+                    r.page_count > 0 &&
+                    ["pdf", "pptx"].includes(r.kind),
+                ) &&
+                !uploadedId &&
+                !upload.isPending && (
+                  <p className="muted small spaced">
+                    No prepared slide decks yet. Upload your slides here to get
+                    started.
+                  </p>
+                )}
+              {upload.isPending && (
+                <p role="status" className="spaced">
+                  Uploading slides…
+                </p>
+              )}
+              {uploaded && (
+                <p role="status" className="spaced">
+                  {uploaded.original_filename} ·{" "}
+                  {uploaded.process_status === "ready"
+                    ? "Slides ready"
+                    : uploaded.process_status === "failed"
+                      ? "Slide preparation failed"
+                      : "Preparing slides…"}
+                </p>
+              )}
+              {uploaded?.error_message && (
+                <p className="error">{uploaded.error_message}</p>
+              )}
+              {uploaded?.process_status === "failed" && (
+                <button
+                  type="button"
+                  className="secondary spaced"
+                  disabled={retry.isPending}
+                  onClick={() => retry.mutate()}
+                >
+                  Retry slide preparation
+                </button>
+              )}
+              {upload.error && uploadFile && (
+                <button
+                  type="button"
+                  className="secondary spaced"
+                  disabled={upload.isPending}
+                  onClick={() => uploadSlides(uploadFile)}
+                >
+                  Retry upload
+                </button>
+              )}
+            </div>
+            <Failure
+              error={
+                create.error || resources.error || upload.error || retry.error
+              }
+            />
             <FormActions onCancel={dialog.close}>
-              <button className="primary" disabled={create.isPending}>
+              <button
+                className="primary"
+                disabled={create.isPending || upload.isPending || !selectedDeck}
+              >
                 {create.isPending ? "Creating…" : "Create lecture"}
               </button>
             </FormActions>

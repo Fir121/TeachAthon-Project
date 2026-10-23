@@ -8,7 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from .ai.providers.openai import OpenAIText, OpenAIEmbeddings
 from .ai.retrieval import enqueue_index
-from .models import LiveSession, Lecture, Resource, Transcript, Poll, Question, Cluster, Feedback, Job, now
+from .models import LiveSession, Lecture, Resource, Transcript, Poll, Question, Cluster, Feedback, Job, User, now
 from .security import DB, Actor, member
 from .classroom import live, emit, offset, open_poll
 from .materials import require
@@ -224,15 +224,15 @@ async def classify_feedback(db, fid):
     poll = db.get(Poll, f.poll_id)
     s = db.get(LiveSession, poll.session_id)
     if result.classification == "question" and not f.linked_question_id:
-        # Feedback is privileged and identity-free; inferred questions remain private until explicitly routed.
+        # Feedback remains lecturer-only; preserve attribution only when it was supplied.
         q = Question(
             course_id=s.course_id,
             session_id=s.id,
             body_original=f.text_original,
             body_display=f.text_rewritten,
             ai_modified=f.ai_modified,
-            anonymous=True,
-            author_id=None,
+            anonymous=f.author_id is None,
+            author_id=f.author_id,
             visibility="private",
         )
         db.add(q)
@@ -388,6 +388,7 @@ def queue(sid: str, db: DB, user: Actor, sort: str = "unanswered"):
         "feedback": [
             {
                 "id": f.id,
+                "author": db.get(User, f.author_id).name if f.author_id else "Anonymous (legacy)",
                 "text_original": f.text_original,
                 "text_rewritten": f.text_rewritten,
                 "ai_modified": f.ai_modified,
@@ -422,12 +423,12 @@ def submit_feedback(pid: str, data: FeedbackInput, db: DB, user: Actor):
 
     try:
         proof = signer().loads(data.preflight_token, max_age=600)
-        original = PreflightInput(text=data.text, visibility="private", anonymous=True, session_id=s.id)
-        if proof["fingerprint"] != fingerprint(s.course_id, original):
+        original = PreflightInput(text=data.text, purpose="feedback", session_id=s.id)
+        if proof["fingerprint"] != fingerprint(s.course_id, original) or proof.get("actor_id") != user.id:
             raise BadSignature("mismatch")
     except (BadSignature, KeyError):
         raise HTTPException(409, "Check course sources for this note before sending.")
-    f = Feedback(poll_id=pid, text_original=data.text)
+    f = Feedback(poll_id=pid, text_original=data.text, author_id=user.id)
     db.add(f)
     db.flush()
     db.add(Job(type="classify_feedback", course_id=s.course_id, target_id=f.id))
@@ -575,8 +576,8 @@ def route_feedback(fid: str, db: DB, user: Actor):
         body_original=f.text_original,
         body_display=f.text_rewritten or f.text_original,
         ai_modified=f.ai_modified,
-        anonymous=True,
-        author_id=None,
+        anonymous=f.author_id is None,
+        author_id=f.author_id,
         visibility="private",
     )
     db.add(q)

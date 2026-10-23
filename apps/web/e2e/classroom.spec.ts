@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 import path from "node:path";
-test("lecturer and mobile student share slides, polls and private-safe questions", async ({
+test("lecturer and mobile student share slides, polls and named questions and lecturer-only feedback", async ({
   browser,
 }) => {
   const teacher = await browser.newContext({
@@ -97,9 +97,8 @@ test("lecturer and mobile student share slides, polls and private-safe questions
   await s
     .getByLabel("Your question")
     .fill("Why does binary search halve the search space?");
-  await s.getByLabel("Ask anonymously").check();
-  await s.getByRole("button", { name: "Check existing explanations" }).click();
-  await s.getByRole("button", { name: "Post my question anyway" }).click();
+  await s.getByRole("button", { name: "Post question" }).click();
+  await s.getByRole("button", { name: /Post (my question )?anyway/ }).click();
   await expect(
     t.getByRole("button", {
       name: "Why does binary search halve the search space?",
@@ -110,17 +109,24 @@ test("lecturer and mobile student share slides, polls and private-safe questions
   await expect(
     s.getByText("Answered by lecturer", { exact: true }),
   ).toBeVisible();
-  await s.getByRole("button", { name: "Ask a question", exact: true }).click();
-  await s.getByLabel("Your question").fill("Private accommodation discussion");
-  await s.getByLabel("Who can see it?").selectOption("private");
-  await s.getByRole("button", { name: "Check existing explanations" }).click();
-  await s.getByRole("button", { name: "Post my question anyway" }).click();
+  await s.getByText("Add a note for the lecturer", { exact: true }).click();
+  await s
+    .getByLabel("What would help?")
+    .fill("Private accommodation discussion");
+  await s
+    .getByRole("button", { name: "Check course sources", exact: true })
+    .click();
+  await s
+    .getByRole("button", { name: "Send note to lecturer", exact: true })
+    .click();
+  await expect(s.getByText(/Note sent/)).toBeVisible();
+  await t.getByText("Poll feedback & AI processing", { exact: true }).click();
   await expect(
-    t.getByRole("button", {
-      name: "Private accommodation discussion",
-      exact: true,
-    }),
+    t.getByText("Private accommodation discussion", { exact: true }),
   ).toBeVisible();
+  await expect(
+    t.locator(".reply").filter({ hasText: "Private accommodation discussion" }),
+  ).toContainText("Browser student");
   await expect(
     s
       .locator(".question-feed")
@@ -225,12 +231,10 @@ test("real browser microphone chunks assemble to seekable protected recording", 
     const sid = page.url().split("/sessions/")[1];
     await learnerPage.goto(`/sessions/${sid}`);
     await learnerPage.getByLabel("Show live captions").check();
-    let privateQuestion: string | undefined;
+    let recordingQuestion: string | undefined;
     if (process.env.LIVE_AUDIO_FIXTURE) {
       const question = {
         text: "Why is binary search logarithmic?",
-        visibility: "private",
-        anonymous: true,
         session_id: sid,
       };
       const proof = await (
@@ -241,7 +245,7 @@ test("real browser microphone chunks assemble to seekable protected recording", 
           },
         )
       ).json();
-      privateQuestion = (
+      recordingQuestion = (
         await (
           await learner.request.post(`/api/v1/courses/${cid}/questions`, {
             data: { ...question, preflight_token: proof.preflight_token },
@@ -251,14 +255,14 @@ test("real browser microphone chunks assemble to seekable protected recording", 
       expect(
         (
           await context.request.post(
-            `/api/v1/questions/${privateQuestion}/resolve`,
+            `/api/v1/questions/${recordingQuestion}/resolve`,
           )
         ).status(),
       ).toBe(200);
       expect(
         (
           await (
-            await context.request.get(`/api/v1/questions/${privateQuestion}`)
+            await context.request.get(`/api/v1/questions/${recordingQuestion}`)
           ).json()
         ).state,
       ).toBe("answered");
@@ -431,7 +435,7 @@ test("real browser microphone chunks assemble to seekable protected recording", 
             (
               await (
                 await context.request.get(
-                  `/api/v1/questions/${privateQuestion}/match-status`,
+                  `/api/v1/questions/${recordingQuestion}/match-status`,
                 )
               ).json()
             ).state,
@@ -440,9 +444,9 @@ test("real browser microphone chunks assemble to seekable protected recording", 
         .toBe("ready");
       expect(
         (
-          await learner.request.get(`/api/v1/questions/${privateQuestion}`)
+          await learner.request.get(`/api/v1/questions/${recordingQuestion}`)
         ).status(),
-      ).toBe(404);
+      ).toBe(200);
       await expect(page.locator(".transcript-panel")).toContainText(
         /binary|search/i,
       );

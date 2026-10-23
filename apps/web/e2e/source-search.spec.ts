@@ -109,9 +109,7 @@ test("grouped source links, exact pages and explicit preflight controls", async 
     await page
       .getByLabel("Your question")
       .fill("Why does binary search require a sorted sequence?");
-    await page
-      .getByRole("button", { name: "Check existing explanations" })
-      .click();
+    await page.getByRole("button", { name: "Post question" }).click();
     await expect(
       page.getByRole("heading", { name: "search-pages.pdf", exact: true }),
     ).toBeVisible({ timeout: 30000 });
@@ -134,9 +132,7 @@ test("grouped source links, exact pages and explicit preflight controls", async 
       },
       { times: 1 },
     );
-    await page
-      .getByRole("button", { name: "Check existing explanations" })
-      .click();
+    await page.getByRole("button", { name: "Post question" }).click();
     await expect(page.getByRole("alert")).toBeVisible();
     expect(
       (
@@ -145,7 +141,10 @@ test("grouped source links, exact pages and explicit preflight controls", async 
         ).json()
       ).length,
     ).toBe(0);
-    await page.getByRole("button", { name: "Post my question anyway" }).click();
+    await page.getByRole("button", { name: "Retry source search" }).click();
+    await page
+      .getByRole("button", { name: /Post (my question )?anyway/ })
+      .click();
     await expect(page.getByRole("dialog")).toHaveCount(0, { timeout: 30000 });
     expect(
       (
@@ -171,7 +170,7 @@ test("grouped source links, exact pages and explicit preflight controls", async 
     await teacher.request.post(`/api/v1/sessions/${sid}/polls`, { data: {} });
     await page.goto(`/sessions/${sid}`);
     await page
-      .getByText("Add an anonymous note for the lecturer", { exact: true })
+      .getByText("Add a note for the lecturer", { exact: true })
       .click();
     await page
       .getByLabel("What would help?")
@@ -190,9 +189,7 @@ test("grouped source links, exact pages and explicit preflight controls", async 
         ).json()
       ).feedback.length,
     ).toBe(0);
-    await page
-      .getByRole("button", { name: "Send note to lecturer anyway" })
-      .click();
+    await page.getByRole("button", { name: "Send note to lecturer" }).click();
     await expect(page.getByText(/Note sent/)).toBeVisible();
   } finally {
     expect(

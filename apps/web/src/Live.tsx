@@ -11,13 +11,14 @@ import {
   ChevronLeft,
   ChevronRight,
   Expand,
+  Minimize,
   ExternalLink,
   Radio,
   Pencil,
   Eraser,
   CheckCircle2,
 } from "lucide-react";
-import { api, queryClient, useAction, useUI } from "./api";
+import { api, ApiError, queryClient, useAction, useUI } from "./api";
 import { QuestionFeed, type Question } from "./Questions";
 import { Failure, type Lecture } from "./CoursePage";
 import { AudioControls } from "./AudioCapture";
@@ -78,6 +79,16 @@ export function LectureSetup() {
     queryKey: ["lecture", id],
     queryFn: () => api<Lecture & { course_id: string }>(`/lectures/${id}`),
   });
+  const courseLectures = useQuery({
+    queryKey: ["lectures", lecture.data?.course_id],
+    queryFn: () =>
+      api<Lecture[]>(`/courses/${lecture.data!.course_id}/lectures`),
+    enabled: !!lecture.data,
+    refetchInterval: 2000,
+  });
+  const activeLecture = courseLectures.data?.find(
+    (l) => l.session?.state === "live" && l.id !== id,
+  );
   const course = useQuery({
     queryKey: ["course", lecture.data?.course_id],
     queryFn: () =>
@@ -195,9 +206,32 @@ export function LectureSetup() {
               available only to enrolled course members. Microphone capture
               starts when you choose it in the control room.
             </p>
+            {(activeLecture ||
+              (start.error instanceof ApiError &&
+                start.error.activeSession)) && (
+              <div className="error spaced" role="alert">
+                <p>
+                  {activeLecture
+                    ? `${activeLecture.title} is already live in this course.`
+                    : start.error?.message}
+                </p>
+                <Link
+                  className="button secondary spaced"
+                  to={
+                    activeLecture
+                      ? `/sessions/${activeLecture.session!.id}`
+                      : (start.error as ApiError).activeSession!.url
+                  }
+                >
+                  Open live lecture
+                </Link>
+              </div>
+            )}
             <button
               className="primary spaced"
-              disabled={start.isPending || !slides.data?.length}
+              disabled={
+                start.isPending || !slides.data?.length || !!activeLecture
+              }
               onClick={() =>
                 start.mutate(undefined, {
                   onSuccess: (s) => navigate(`/sessions/${s.id}`),
@@ -259,12 +293,21 @@ export function useSessionSocket(
         setState("Connected");
         attempt = 0;
         void queryClient.invalidateQueries({ queryKey: ["snapshot", id] });
+        void queryClient.invalidateQueries({ queryKey: ["questions"] });
+        void queryClient.invalidateQueries({ queryKey: ["answers"] });
       };
       ws.onmessage = (e) => {
         const event = JSON.parse(e.data);
         if (event.type === "transcript.delta") {
           callback.current?.(event.payload.text);
           return;
+        }
+        if (
+          event.type.startsWith("question.") ||
+          event.type.startsWith("reply.")
+        ) {
+          void queryClient.invalidateQueries({ queryKey: ["questions"] });
+          void queryClient.invalidateQueries({ queryKey: ["answers"] });
         }
         if (event.type === "question.answered")
           useUI.getState().setNotice("A class question has been answered.");
@@ -523,7 +566,7 @@ export default function Live() {
   const q = useQuery({
     queryKey: ["snapshot", id],
     queryFn: () => api<Snapshot>(`/sessions/${id}/snapshot`),
-    refetchInterval: 5000,
+    refetchInterval: 2000,
   });
   const join = useQuery({
     queryKey: ["join-info", id],
@@ -553,6 +596,14 @@ export default function Live() {
     ),
   );
   const [confirmEnd, setConfirmEnd] = useState(false);
+  const [fullscreen, setFullscreen] = useState(false);
+  const presenter = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const changed = () =>
+      setFullscreen(document.fullscreenElement === presenter.current);
+    document.addEventListener("fullscreenchange", changed);
+    return () => document.removeEventListener("fullscreenchange", changed);
+  }, []);
   const stopAudio = useRef<(() => Promise<void>) | null>(null);
   const history = useQuery({
     queryKey: ["poll-history", id],
@@ -573,7 +624,8 @@ export default function Live() {
     function key(e: KeyboardEvent) {
       if (
         e.target instanceof HTMLElement &&
-        ["INPUT", "TEXTAREA", "SELECT", "BUTTON"].includes(e.target.tagName)
+        (["INPUT", "TEXTAREA", "SELECT"].includes(e.target.tagName) ||
+          e.target.isContentEditable)
       )
         return;
       if (e.key === "ArrowRight") {
@@ -646,19 +698,17 @@ export default function Live() {
             </button>
             <button
               className="icon-button"
-              aria-label="Fullscreen slides"
-              onClick={() =>
-                document
-                  .querySelector(".presenter-surface")
-                  ?.requestFullscreen()
-                  .catch(() =>
-                    useUI
-                      .getState()
-                      .setNotice("Fullscreen could not be opened."),
-                  )
-              }
+              aria-label={fullscreen ? "Exit fullscreen" : "Fullscreen slides"}
+              onClick={() => {
+                const operation = document.fullscreenElement
+                  ? document.exitFullscreen()
+                  : presenter.current?.requestFullscreen();
+                operation?.catch(() =>
+                  useUI.getState().setNotice("Fullscreen could not be opened."),
+                );
+              }}
             >
-              <Expand size={18} />
+              {fullscreen ? <Minimize size={18} /> : <Expand size={18} />}
             </button>
           </div>
         )}
@@ -674,7 +724,9 @@ export default function Live() {
             Control room
           </Link>
         </div>
-        <div className="presenter-surface">{slides}</div>
+        <div className="presenter-surface" ref={presenter}>
+          {slides}
+        </div>
         <div className="join-banner">
           <QRCodeSVG value={join.data?.url || location.href} size={85} />
           <div>
@@ -742,7 +794,9 @@ export default function Live() {
       )}
       <div className={`live-layout ${teacher ? "instructor" : ""}`}>
         <div>
-          <section className="panel presenter-surface">{slides}</section>
+          <section className="panel presenter-surface" ref={presenter}>
+            {slides}
+          </section>
           {teacher && (
             <section className="panel spaced">
               <div className="row-between">

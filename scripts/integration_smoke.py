@@ -50,23 +50,23 @@ def main(audio):
             lid=t.post(f'/courses/{cid}/lectures',json={'title':'Integration lecture','slide_resource_id':rid}).json()['id']
             sid=t.post(f'/lectures/{lid}/sessions/start',json={}).json()['id']
             ids=[]
-            for text,visibility in [('What makes binary search run in logarithmic time?','public'),('Why is binary search O(log n) rather than linear?','private')]:
-                data={'text':text,'visibility':visibility,'anonymous':True,'session_id':sid}
+            for text in ['What makes binary search run in logarithmic time?', 'Why is binary search O(log n) rather than linear?']:
+                data={'text':text,'session_id':sid}
                 proof=s.post(f'/courses/{cid}/questions/preflight',json=data).json()['preflight_token']
                 q=s.post(f'/courses/{cid}/questions',json={**data,'preflight_token':proof});q.raise_for_status();ids.append(q.json()['id'])
             groups=wait(lambda:[g for g in t.get(f'/sessions/{sid}/lecturer-queue').json()['groups'] if len(g['questions'])==2])
             t.post(f'/clusters/{groups[0]["id"]}/resolve').raise_for_status()
             assert s.get(f'/questions/{ids[0]}').json()['state']=='answered'
-            assert s.get(f'/questions/{ids[1]}').status_code==404
-            print('Real embedding/LLM grouping of public+private variants and lecturer group resolution: PASS')
+            assert s.get(f'/questions/{ids[1]}').status_code==200
+            print('Real embedding/LLM grouping of named question variants and lecturer group resolution: PASS')
             pid=t.post(f'/sessions/{sid}/polls',json={}).json()['id']
             text='Could you explain why the search interval must be sorted?'
-            data={'text':text,'anonymous':True,'visibility':'private','session_id':sid}
+            data={'text':text,'purpose':'feedback','session_id':sid}
             proof=s.post(f'/courses/{cid}/questions/preflight',json=data).json()['preflight_token']
             s.post(f'/polls/{pid}/feedback',json={'text':text,'preflight_token':proof}).raise_for_status()
             wait(lambda:any(f['classification']=='question' and f['linked_question_id'] for f in t.get(f'/sessions/{sid}/lecturer-queue').json()['feedback']))
             assert all(q['visibility']=='public' for q in s.get(f'/sessions/{sid}/snapshot').json()['questions'])
-            print('Real feedback classification with private anonymous routing: PASS')
+            print('Real feedback classification with named lecturer-only routing: PASS')
             t.post(f'/sessions/{sid}/end').raise_for_status()
             r=t.post(f'/courses/{cid}/resources',files={'file':('generated-speech.mp3',audio.read_bytes(),'audio/mpeg')});r.raise_for_status();media_id=r.json()['id']
             wait(lambda:t.get(f'/resources/{media_id}').json()['index_status']=='ready')

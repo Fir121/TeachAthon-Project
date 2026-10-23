@@ -58,3 +58,5 @@ The confirmed PaddleOCR/semchunk/source-link plan supersedes older extraction an
 - Timestamp arithmetic and seek across slide changes.
 - Automatic poll cooldown, one-open invariant, teacher override and response upsert.
 - Mock provider unit tests plus small live API smoke test that runs only with configured credentials.
+
+Owner revision 2026-10-22: Post question runs mandatory retrieval; only complete warning-free empty results auto-post after that explicit submit action. Matches, degraded fallback and failures retain explicit confirmation. New questions/replies are named and course-public; notes store their sender for lecturers and inferred questions stay private with that attribution. Historical anonymity/privacy remains protected. See AI_WORKFLOW.md for current proof, retry and visibility details.

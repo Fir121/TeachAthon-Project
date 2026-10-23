@@ -711,16 +711,45 @@ details form {
   background: #131b17;
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  padding: 20px;
+  gap: 12px;
+  padding: 16px;
   width: 100vw;
-  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+  border: 0;
+  border-radius: 0;
 }
 .presenter-surface:fullscreen .slide-stage {
-  flex: 1;
+  order: 1;
+  flex: 1 1 0;
+  min-height: 0;
+  max-height: none;
+  aspect-ratio: auto;
+}
+.presenter-surface:fullscreen .slide-controls,
+.presenter-surface:fullscreen .annotation-tools {
+  flex: 0 0 auto;
+  margin: 0;
+  background: #fff;
+  color: #223831;
+  padding: 8px 12px;
+  border-radius: 9px;
 }
 .presenter-surface:fullscreen .slide-controls {
-  color: white;
+  order: 2;
+}
+.presenter-surface:fullscreen .annotation-tools {
+  order: 3;
+  flex-wrap: wrap;
+}
+.presenter-surface:fullscreen .icon-button {
+  color: #223831;
+}
+.slide-upload {
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: #f7f8f5;
 }
 .projection-layout {
   max-width: 1300px;

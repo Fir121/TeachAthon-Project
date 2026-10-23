@@ -26,7 +26,7 @@ Prefix `/api/v1`. JSON request/response; consistent errors `{code,message,detail
 ## Polls and questions
 - `POST /sessions/{sid}/polls` lecturer, `GET /sessions/{sid}/polls`, `POST /polls/{pid}/vote` student, `POST /polls/{pid}/close` lecturer, `GET /polls/{pid}/results` lecturer aggregates only
 - `POST /polls/{pid}/feedback` classified in background if needed; secure original/rewrite semantics
-- `POST /courses/{id}/questions/preflight` with text+visibility+anonymous+context optional; returns resource matches and **public-only existing-question suggestions**, transient preflight token if useful; asynchronous AI with bound timeout/failure state
+- `POST /courses/{id}/questions/preflight` with text, optional session_id/submission_id and purpose question|feedback; returns resource matches and **public-only existing-question suggestions**, transient preflight token if useful; asynchronous AI with bound timeout/failure state
 - `POST /courses/{id}/questions` with preflight token or signed explicit failed-attempt marker; `GET /courses/{id}/questions?scope=live|forum&sort=...`; `GET/PATCH/DELETE /questions/{qid}` permissions
 - `POST/DELETE /questions/{qid}/vote` public only; `POST /questions/{qid}/answer`, `POST /questions/{qid}/resolve`, `POST /questions/{qid}/dismiss`; `POST /questions/{qid}/comments`; `GET /questions/{qid}/answers` permissions.
 - `GET /sessions/{sid}/lecturer-queue` lecturer-only grouped view; `POST /clusters/{cid}/merge|split|resolve` lecturer-only; `GET /questions/{qid}/match-status`, `PATCH/DELETE /answer-sources/{id}` lecturer.
@@ -40,12 +40,12 @@ WebSocket `GET /ws/sessions/{sid}` authenticated course member. Snapshot fetched
  "type":"poll.opened","at":"ISO-8601","payload":{...}
 }
 ```
-Events include `session.started|ended`, `slide.changed`, `annotation.added`, `poll.opened|updated|closed`, `poll.results.updated` (lecturer only), `question.created|updated|answered` (visibility-filtered), `question.cluster.updated` (lecturer only), `transcript.delta|final` (course authorized; captions enabled), `context.topic.updated` (lecturer), `resource.status`, `recording.status`, `participant.count.updated`, `notification.created`. **No private content in a public broadcast; use per-client authorization before broadcasting**.
+Events include `session.started|ended`, `slide.changed`, `annotation.added`, `poll.opened|updated|closed`, `poll.results.updated` (lecturer only), `question.created|updated|answered|deleted`, `reply.created|updated|deleted` (visibility-filtered), `question.cluster.updated` (lecturer only), `transcript.delta|final` (course authorized; captions enabled), `context.topic.updated` (lecturer), `resource.status`, `recording.status`, `participant.count.updated`, `notification.created`. **No private content in a public broadcast; use per-client authorization before broadcasting**.
 
 Audio ingest path: `GET /ws/sessions/{sid}/audio` lecturer-only, receives PCM frames and emits STT via provider behind backend; handle mic pause and close cleanly. If provider WebRTC+ephemeral credentials is selected for implementation, keep private keys server-side and forward transcription results into the same backend store/event hub. Binary audio channels not conflated with general classroom JSON event channel.
 
 ## Semantics
-- Requests idempotent where feasible: `start` cannot create two live sessions for same lecture; `end` returns ended state if already ended; votes upsert per student; recording audio chunk index deduped; WS reconnect uses DB snapshot rather than replay assumption.
+- Requests idempotent where feasible: `start` cannot create two live sessions for same lecture or course; `end` returns ended state if already ended; votes upsert per student; recording audio chunk index deduped; WS reconnect uses DB snapshot rather than replay assumption.
 - `preflight` may be slow: return structured error with timeout; client allows post after failed attempted retrieval. Never require AI success to participate.
 - Approval is via lecturer course membership and questions' actual visibility, not just user account role.
 - Course search and preflight return typed `matches` source groups with stable parent ID, kind, title, primary URL and deduplicated page/time `locations`. No internal chunk text/excerpts are exposed. The eight-result limit applies after grouping; preflight proof fields remain unchanged. See AI_WORKFLOW.md and the generated OpenAPI contract.

@@ -7,6 +7,7 @@ export class ApiError extends Error {
   constructor(
     public status: number,
     message: string,
+    public activeSession?: { id: string; title: string; url: string },
   ) {
     super(message);
   }
@@ -27,7 +28,11 @@ export async function api<T = unknown>(
     const e = await r
       .json()
       .catch(() => ({ message: "The server is unavailable. Please retry." }));
-    throw new ApiError(r.status, e.message || "Request failed.");
+    throw new ApiError(
+      r.status,
+      e.message || "Request failed.",
+      e.active_session,
+    );
   }
   return r.status === 204 ? (undefined as T) : r.json();
 }

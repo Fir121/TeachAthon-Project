@@ -39,8 +39,33 @@ def room(clients, tmp_path, monkeypatch):
     return t, s, o, factory, cid, lid, sid, student
 
 
-def post_question(client, cid, sid, text="Why is binary search logarithmic?", anonymous=False, visibility="public"):
-    data = {"text": text, "anonymous": anonymous, "visibility": visibility, "session_id": sid}
+def post_question(
+    client, cid, sid, text="Why is binary search logarithmic?", anonymous=False, visibility="public", factory=None
+):
+    if anonymous or visibility == "private":
+        # Seed historical data: the current API no longer creates these submissions.
+        assert factory is not None
+        from app.questions import question_json, question_event
+        from app.models import User
+
+        user_id = client.get("/api/v1/auth/me").json()["id"]
+        with factory() as db:
+            user = db.get(User, user_id)
+            q = Question(
+                course_id=cid,
+                session_id=sid,
+                body_original=text,
+                body_display=text,
+                anonymous=anonymous,
+                visibility=visibility,
+                author_id=None if anonymous else user_id,
+            )
+            db.add(q)
+            db.flush()
+            question_event(db, q, "question.created")
+            db.commit()
+            return question_json(db, q, user, user.role == "lecturer")
+    data = {"text": text, "session_id": sid}
     r = client.post(f"/api/v1/courses/{cid}/questions/preflight", json=data)
     assert r.status_code == 200, r.text
     r = client.post(f"/api/v1/courses/{cid}/questions", json={**data, "preflight_token": r.json()["preflight_token"]})
@@ -70,7 +95,7 @@ def test_poll_and_slide_invariants(room):
 def test_question_privacy_proof_and_anonymity(room):
     t, s, o, factory, cid, lid, sid, student = room
     before = s.get(f"/api/v1/sessions/{sid}/snapshot").json()["session"]["seq"]
-    private = post_question(s, cid, sid, "Private health accommodation question", True, "private")
+    private = post_question(s, cid, sid, "Private health accommodation question", True, "private", factory=factory)
     assert private["author_id"] is None
     assert s.get(f"/api/v1/questions/{private['id']}").status_code == 404
     after = s.get(f"/api/v1/sessions/{sid}/snapshot").json()
@@ -80,7 +105,7 @@ def test_question_privacy_proof_and_anonymity(room):
         f"/api/v1/courses/{cid}/questions/preflight", json={"text": "Private health accommodation question"}
     ).json()
     assert all(m["source_id"] != private["id"] for m in pre["matches"])
-    anon = post_question(s, cid, sid, anonymous=True)
+    anon = post_question(s, cid, sid, anonymous=True, factory=factory)
     assert s.patch(f"/api/v1/questions/{anon['id']}", json={"text": "New body"}).status_code == 403
     assert s.delete(f"/api/v1/questions/{anon['id']}").status_code == 403
     named = post_question(s, cid, sid, text="How can I change a named question?")
@@ -91,8 +116,6 @@ def test_question_privacy_proof_and_anonymity(room):
             f"/api/v1/courses/{cid}/questions",
             json={
                 "text": "Changed proof",
-                "anonymous": False,
-                "visibility": "public",
                 "preflight_token": pre["preflight_token"],
             },
         ).status_code
@@ -119,7 +142,7 @@ def test_question_privacy_proof_and_anonymity(room):
 
 def test_named_private_author_can_correct_or_delete_without_reading_private_threads(room):
     t, s, o, factory, cid, lid, sid, _ = room
-    q = post_question(s, cid, sid, "Named private question before correction", False, "private")
+    q = post_question(s, cid, sid, "Named private question before correction", False, "private", factory=factory)
     assert s.get(f"/api/v1/questions/{q['id']}").status_code == 404
     assert s.patch(f"/api/v1/questions/{q['id']}", json={"text": "Named private question corrected"}).status_code == 200
     assert t.get(f"/api/v1/questions/{q['id']}").json()["text"] == "Named private question corrected"

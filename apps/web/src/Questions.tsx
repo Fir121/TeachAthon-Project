@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -6,11 +6,10 @@ import {
   MessageCircle,
   Lock,
   CheckCircle2,
-  Search,
   Send,
   X,
 } from "lucide-react";
-import { api, useAction, type User } from "./api";
+import { api, useAction, useUI, type User } from "./api";
 import { Failure } from "./CoursePage";
 import { Dialog, useDialog } from "./Dialog";
 export type Match = {
@@ -46,6 +45,7 @@ export type Question = {
   visibility: string;
   state: string;
   can_edit: boolean;
+  can_delete: boolean;
   votes: number | null;
   my_vote: boolean;
   session_id: string | null;
@@ -177,39 +177,52 @@ export function AskFlow({
   courseId: string;
   sessionId?: string;
   onClose: () => void;
-  onPosted?: (question: Question) => void;
+  onPosted?: (question: Question, noMatches: boolean) => void;
 }) {
-  const [text, setText] = useState(""),
-    [visibility, setVisibility] = useState("public"),
-    [anonymous, setAnonymous] = useState(false),
-    [result, setResult] = useState<Preflight | null>(null),
-    [attempted, setAttempted] = useState(false);
+  const [text, setText] = useState("");
+  const [submissionId, setSubmissionId] = useState(() => crypto.randomUUID());
+  const [result, setResult] = useState<Preflight | null>(null);
+  const [attempted, setAttempted] = useState(false);
+  const busy = useRef(false);
   const payload = {
     text,
-    visibility,
-    anonymous,
     session_id: sessionId || null,
+    submission_id: submissionId,
   };
+  const post = useAction((checked: Preflight) =>
+    api<Question>(`/courses/${courseId}/questions`, {
+      ...payload,
+      preflight_token: checked.preflight_token,
+    }),
+  );
+  async function publish(checked: Preflight, noMatches = false) {
+    const question = await post.mutateAsync(checked);
+    onPosted?.(question, noMatches);
+    onClose();
+  }
   const preflight = useAction(() =>
     api<Preflight>(`/courses/${courseId}/questions/preflight`, payload),
   );
-  const post = useAction(async () => {
-    const checked =
-      result ||
-      (await api<Preflight>(
-        `/courses/${courseId}/questions/preflight`,
-        payload,
-      ));
-    return api<Question>(`/courses/${courseId}/questions`, {
-      ...payload,
-      preflight_token: checked.preflight_token,
-    });
-  });
-  function reset() {
-    setResult(null);
-    setAttempted(false);
-    preflight.reset();
+  async function check() {
+    if (busy.current) return;
+    busy.current = true;
+    setAttempted(true);
+    try {
+      const checked = await preflight.mutateAsync();
+      setResult(checked);
+      if (
+        checked.status === "complete" &&
+        !checked.error &&
+        checked.matches.length === 0
+      )
+        await publish(checked, true);
+    } catch {
+      /* Mutation errors remain beside the draft. */
+    } finally {
+      busy.current = false;
+    }
   }
+  const pending = preflight.isPending || post.isPending;
   return (
     <section className="panel ask-flow" aria-label="Ask a question">
       <div className="row-between">
@@ -220,6 +233,7 @@ export function AskFlow({
         <button
           className="icon-button"
           aria-label="Close question form"
+          disabled={pending}
           onClick={onClose}
         >
           <X size={18} />
@@ -228,75 +242,42 @@ export function AskFlow({
       <form
         onSubmit={(e) => {
           e.preventDefault();
-          setAttempted(true);
-          preflight.mutate(undefined, { onSuccess: setResult });
+          void check();
         }}
       >
         <label>
           Your question
           <textarea
             autoFocus
-            disabled={preflight.isPending || post.isPending}
+            disabled={pending}
             value={text}
             minLength={3}
             maxLength={8000}
             required
             onChange={(e) => {
               setText(e.target.value);
-              reset();
+              setSubmissionId(crypto.randomUUID());
+              setResult(null);
+              setAttempted(false);
+              preflight.reset();
+              post.reset();
             }}
             placeholder="Ask about something you’d like to understand…"
           />
         </label>
-        <div className="ask-options">
-          <label>
-            Who can see it?
-            <select
-              disabled={preflight.isPending || post.isPending}
-              value={visibility}
-              onChange={(e) => {
-                setVisibility(e.target.value);
-                reset();
-              }}
-            >
-              <option value="public">Everyone in this course</option>
-              <option value="private">Lecturers only</option>
-            </select>
-          </label>
-          <label className="check">
-            <input
-              type="checkbox"
-              disabled={preflight.isPending || post.isPending}
-              checked={anonymous}
-              onChange={(e) => {
-                setAnonymous(e.target.checked);
-                reset();
-              }}
-            />
-            Ask anonymously
-          </label>
-        </div>
-        {anonymous && (
-          <p className="muted small">
-            Your identity is not saved with this question. You won’t be able to
-            edit or delete it later.
-          </p>
-        )}
-        {visibility === "private" && (
-          <p className="muted small">
-            Only course lecturers can read your question and its replies.
-          </p>
-        )}
-        <button
-          className="primary"
-          disabled={preflight.isPending || post.isPending}
-        >
-          <Search size={16} />
-          {preflight.isPending
-            ? "Checking course sources…"
-            : attempted
-              ? "Retry source search"
-              : "Check existing explanations"}
+        <p className="muted small spaced">
+          Your name and question are visible to course members. We check
+          existing sources before posting.
+        </p>
+        <button className="primary spaced" disabled={pending}>
+          <Send size={16} />
+          {post.isPending
+            ? "Posting…"
+            : preflight.isPending
+              ? "Checking course sources…"
+              : attempted
+                ? "Retry source search"
+                : "Post question"}
         </button>
       </form>
       <Failure error={preflight.error} />
@@ -310,7 +291,7 @@ export function AskFlow({
           <h3>
             {result.matches.length
               ? "Related course sources"
-              : "No suitable source found"}
+              : "Source check finished"}
           </h3>
           <p className="muted small">
             {result.error ||
@@ -323,24 +304,26 @@ export function AskFlow({
             </div>
           )}
           <MatchCards matches={result.matches} />
+          <button
+            className="primary spaced"
+            disabled={pending}
+            onClick={() => {
+              if (busy.current) return;
+              busy.current = true;
+              void publish(result)
+                .catch(() => {})
+                .finally(() => {
+                  busy.current = false;
+                });
+            }}
+          >
+            {post.isPending
+              ? "Posting…"
+              : result.status === "failed" || result.error
+                ? "Post anyway"
+                : "Post my question anyway"}
+          </button>
         </div>
-      )}
-      {attempted && !preflight.isPending && (
-        <button
-          className="primary spaced"
-          disabled={post.isPending || text.length < 3}
-          onClick={() =>
-            post.mutate(undefined, {
-              onSuccess: (question) => {
-                onPosted?.(question);
-                onClose();
-              },
-            })
-          }
-        >
-          <Send size={16} />
-          {post.isPending ? "Posting…" : "Post my question anyway"}
-        </button>
       )}
       <Failure error={post.error} />
     </section>
@@ -357,7 +340,7 @@ export function QuestionFeed({
   teacher?: boolean;
   questions?: Question[];
 }) {
-  const [receipt, setReceipt] = useState<Question | null>(null);
+  const [postNotice, setPostNotice] = useState("");
   const [params] = useSearchParams();
   const dialog = useDialog();
   const [sort, setSort] = useState("newest"),
@@ -369,10 +352,26 @@ export function QuestionFeed({
       api<Question[]>(
         `/courses/${courseId}/questions?${new URLSearchParams({ ...(sessionId ? { session_id: sessionId } : {}), sort, q: search })}`,
       ),
-    refetchInterval: 5000,
+    refetchInterval: 2000,
+    refetchOnWindowFocus: "always",
+    refetchOnReconnect: "always",
     enabled: !provided,
   });
   const questions = provided || q.data;
+  useEffect(() => {
+    // A deep-linked thread may be outside the current filters, so verify deletion directly.
+    if (!open || questions?.some((question) => question.id === open)) return;
+    let cancelled = false;
+    void api(`/questions/${open}`).catch((error) => {
+      if (!cancelled && error.status === 404) {
+        setOpen(null);
+        useUI.getState().setNotice("This discussion is no longer available.");
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, questions]);
   return (
     <section>
       <div className="row-between">
@@ -397,10 +396,13 @@ export function QuestionFeed({
           <AskFlow
             courseId={courseId}
             sessionId={sessionId}
-            onPosted={(question) => {
-              if (question.visibility === "private" && !question.anonymous)
-                setReceipt(question);
-            }}
+            onPosted={(_, noMatches) =>
+              setPostNotice(
+                noMatches
+                  ? "Question posted to course discussions. No similar course sources were found."
+                  : "Question posted to course discussions.",
+              )
+            }
             onClose={dialog.close}
           />
         </Dialog>
@@ -425,22 +427,16 @@ export function QuestionFeed({
           </label>
         </div>
       )}
-      {receipt && (
-        <div className="panel spaced">
-          <h3>Your submission receipt</h3>
-          <p className="muted small">
-            This is the question you just sent. It stays out of the class feed.
-            You can edit or delete this named submission here; private replies
-            are lecturer-only.
-          </p>
-          <QuestionCard
-            question={receipt}
-            teacher={false}
-            open={false}
-            onOpen={() => {}}
-            onEdited={setReceipt}
-            onRemoved={() => setReceipt(null)}
-          />
+      {postNotice && (
+        <div className="panel row-between spaced" role="status">
+          <p>{postNotice}</p>
+          <button
+            className="icon-button"
+            aria-label="Dismiss confirmation"
+            onClick={() => setPostNotice("")}
+          >
+            <X size={16} />
+          </button>
         </div>
       )}
       <Failure error={q.error} />
@@ -658,16 +654,16 @@ export function QuestionCard({
               <button onClick={() => dismiss.mutate()}>Dismiss</button>
             )}
             {q.can_edit && (
-              <>
-                <button onClick={() => setEditing(true)}>Edit</button>
-                <button
-                  onClick={() =>
-                    remove.mutate(undefined, { onSuccess: onRemoved })
-                  }
-                >
-                  Delete
-                </button>
-              </>
+              <button onClick={() => setEditing(true)}>Edit</button>
+            )}
+            {q.can_delete && (
+              <button
+                onClick={() =>
+                  remove.mutate(undefined, { onSuccess: onRemoved })
+                }
+              >
+                Delete
+              </button>
             )}
           </div>
         </div>
@@ -692,6 +688,9 @@ function Thread({
   );
   const answers = useQuery({
     queryKey: ["answers", q.id],
+    refetchInterval: 2000,
+    refetchOnWindowFocus: "always",
+    refetchOnReconnect: "always",
     queryFn: () =>
       api<
         {
@@ -701,15 +700,13 @@ function Thread({
           visibility: string;
           lecturer_authored: boolean;
           can_edit: boolean;
+          can_delete: boolean;
         }[]
       >(`/questions/${q.id}/answers`),
   });
   const reply = useAction((data: Record<string, FormDataEntryValue>) =>
     api(`/questions/${q.id}/comments`, {
       body: data.body,
-      visibility:
-        q.visibility === "private" ? "private" : data.visibility || "public",
-      anonymous: data.anonymous === "on",
     }),
   );
   return (
@@ -723,18 +720,22 @@ function Thread({
             {a.visibility === "private" && <span>Private reply</span>}
           </div>
           <p>{a.body}</p>
-          {a.can_edit && (
+          {(a.can_edit || a.can_delete) && (
             <div className="question-actions">
-              <button
-                onClick={() =>
-                  setEditingReply(editingReply === a.id ? null : a.id)
-                }
-              >
-                Edit reply
-              </button>
-              <button onClick={() => removeReply.mutate(a.id)}>
-                Delete reply
-              </button>
+              {a.can_edit && (
+                <button
+                  onClick={() =>
+                    setEditingReply(editingReply === a.id ? null : a.id)
+                  }
+                >
+                  Edit reply
+                </button>
+              )}
+              {a.can_delete && (
+                <button onClick={() => removeReply.mutate(a.id)}>
+                  Delete reply
+                </button>
+              )}
             </div>
           )}
           {editingReply === a.id && (
@@ -775,19 +776,6 @@ function Thread({
           <textarea name="body" required maxLength={8000} />
         </label>
         <div className="actions">
-          {teacher && q.visibility === "public" && (
-            <label>
-              Visibility
-              <select name="visibility">
-                <option value="public">Course members</option>
-                <option value="private">Lecturers only</option>
-              </select>
-            </label>
-          )}
-          <label className="check">
-            <input name="anonymous" type="checkbox" />
-            Anonymous
-          </label>
           <button className="primary" disabled={reply.isPending}>
             {teacher ? "Post answer" : "Post reply"}
           </button>

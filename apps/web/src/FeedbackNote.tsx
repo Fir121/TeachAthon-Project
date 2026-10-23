@@ -16,8 +16,7 @@ export default function FeedbackNote({
     [attempted, setAttempted] = useState(false);
   const payload = {
     text,
-    visibility: "private",
-    anonymous: true,
+    purpose: "feedback",
     session_id: sessionId,
   };
   const search = useAction(() =>
@@ -37,7 +36,7 @@ export default function FeedbackNote({
   });
   return (
     <details className="spaced">
-      <summary>Add an anonymous note for the lecturer</summary>
+      <summary>Add a note for the lecturer</summary>
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -62,8 +61,8 @@ export default function FeedbackNote({
           />
         </label>
         <p className="muted small">
-          Lecturers only. We check course sources first in case your note is a
-          question.
+          Lecturers can see your name and note. Notes and any questions inferred
+          from them stay lecturer-only. We check course sources first.
         </p>
         <button className="secondary" disabled={search.isPending}>
           {search.isPending ? "Checking sources…" : "Check course sources"}
@@ -90,7 +89,7 @@ export default function FeedbackNote({
           disabled={send.isPending || send.isSuccess}
           onClick={() => send.mutate()}
         >
-          {send.isPending ? "Sending…" : "Send note to lecturer anyway"}
+          {send.isPending ? "Sending…" : "Send note to lecturer"}
         </button>
       )}
       {send.isSuccess && (

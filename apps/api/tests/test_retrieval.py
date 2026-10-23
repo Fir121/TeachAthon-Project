@@ -9,7 +9,7 @@ from test_classroom import room, post_question
 
 def test_retrieval_filters_private_disabled_crosscourse_and_irrelevant(room):
     t, s, o, factory, cid, lid, sid, _ = room
-    private = post_question(s, cid, sid, "Binary search private medical concern", True, "private")
+    private = post_question(s, cid, sid, "Binary search private medical concern", True, "private", factory=factory)
     public = post_question(s, cid, sid, "Why does binary search use a sorted sequence?")
     with factory() as db:
         resource = db.scalar(select(Resource).where(Resource.course_id == cid))
@@ -80,14 +80,12 @@ def test_preflight_failure_proof_still_posts(room, monkeypatch):
     monkeypatch.setattr(app.ai.retrieval, "search", unavailable)
     data = {
         "text": "Why does the search interval shrink?",
-        "anonymous": True,
-        "visibility": "public",
         "session_id": sid,
     }
     r = s.post(f"/api/v1/courses/{cid}/questions/preflight", json=data)
     assert r.json()["status"] == "failed"
     posted = s.post(f"/api/v1/courses/{cid}/questions", json={**data, "preflight_token": r.json()["preflight_token"]})
-    assert posted.status_code == 201 and posted.json()["author_id"] is None
+    assert posted.status_code == 201 and posted.json()["author_id"] == s.get("/api/v1/auth/me").json()["id"]
 
 
 def test_embedding_model_dimension_guard(room):

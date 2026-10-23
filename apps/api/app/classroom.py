@@ -120,12 +120,25 @@ class StartInput(BaseModel):
 def start(lid: str, data: StartInput, db: DB, user: Actor):
     lecture = require(db, Lecture, lid)
     member(db, lecture.course_id, user, True)
+    db.scalar(select(Course).where(Course.id == lecture.course_id).with_for_update())
     db.scalar(select(Lecture).where(Lecture.id == lid).with_for_update())
     existing = db.scalar(select(LiveSession).where(LiveSession.lecture_id == lid))
     if existing:
         if existing.state == "ended":
             raise HTTPException(409, "This lecture has already ended. Create a new lecture to teach again.")
         return session_json(existing, True)
+    active = db.scalar(
+        select(LiveSession).where(LiveSession.course_id == lecture.course_id, LiveSession.state == "live")
+    )
+    if active:
+        title = require(db, Lecture, active.lecture_id).title
+        raise HTTPException(
+            409,
+            {
+                "message": f"{title} is already live in this course. End it before starting another lecture.",
+                "active_session": {"id": active.id, "title": title, "url": f"/sessions/{active.id}"},
+            },
+        )
     resource = require(db, Resource, lecture.slide_resource_id)
     if resource.process_status != "ready" or not resource.pages:
         raise HTTPException(409, "The slide deck is not ready.")

@@ -3968,19 +3968,9 @@
             "maxLength": 8000,
             "minLength": 1,
             "title": "Body"
-          },
-          "visibility": {
-            "type": "string",
-            "pattern": "^(public|private)$",
-            "title": "Visibility",
-            "default": "public"
-          },
-          "anonymous": {
-            "type": "boolean",
-            "title": "Anonymous",
-            "default": false
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "required": [
           "body"
@@ -4355,16 +4345,26 @@
             "minLength": 3,
             "title": "Text"
           },
-          "visibility": {
+          "purpose": {
             "type": "string",
-            "pattern": "^(public|private)$",
-            "title": "Visibility",
-            "default": "public"
+            "enum": [
+              "question",
+              "feedback"
+            ],
+            "title": "Purpose",
+            "default": "question"
           },
-          "anonymous": {
-            "type": "boolean",
-            "title": "Anonymous",
-            "default": false
+          "submission_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Submission Id"
           },
           "session_id": {
             "anyOf": [
@@ -4378,6 +4378,7 @@
             "title": "Session Id"
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "required": [
           "text"
@@ -4462,16 +4463,26 @@
             "minLength": 3,
             "title": "Text"
           },
-          "visibility": {
+          "purpose": {
             "type": "string",
-            "pattern": "^(public|private)$",
-            "title": "Visibility",
-            "default": "public"
+            "enum": [
+              "question",
+              "feedback"
+            ],
+            "title": "Purpose",
+            "default": "question"
           },
-          "anonymous": {
-            "type": "boolean",
-            "title": "Anonymous",
-            "default": false
+          "submission_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Submission Id"
           },
           "session_id": {
             "anyOf": [
@@ -4490,6 +4501,7 @@
             "title": "Preflight Token"
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "required": [
           "text",

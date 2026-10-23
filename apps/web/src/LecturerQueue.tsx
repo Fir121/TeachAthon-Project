@@ -12,6 +12,7 @@ type Queue = {
   groups: Group[];
   feedback: {
     id: string;
+    author: string;
     text_original: string;
     text_rewritten: string | null;
     classification: string;
@@ -135,6 +136,9 @@ export default function LecturerQueue({ sessionId }: { sessionId: string }) {
         <summary>Poll feedback & AI processing</summary>
         {q.data?.feedback.map((f) => (
           <div key={f.id} className="reply spaced">
+            <p className="small">
+              <strong>{f.author}</strong> · Lecturers only
+            </p>
             <span className="eyebrow">
               {f.classification}
               {f.ai_modified ? " · AI edited" : ""}

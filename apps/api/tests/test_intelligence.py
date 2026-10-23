@@ -10,7 +10,9 @@ from test_classroom import room, post_question
 def test_manual_private_public_group_and_resolution(room):
     t, s, o, factory, cid, lid, sid, _ = room
     public = post_question(s, cid, sid, "Why does binary search halve the interval?")
-    private = post_question(s, cid, sid, "Please explain halving the binary search interval.", True, "private")
+    private = post_question(
+        s, cid, sid, "Please explain halving the binary search interval.", True, "private", factory=factory
+    )
     assert s.get(f"/api/v1/sessions/{sid}/lecturer-queue").status_code == 403
     group = t.post(f"/api/v1/sessions/{sid}/clusters", json={"question_ids": [public["id"], private["id"]]}).json()[
         "id"
@@ -103,7 +105,7 @@ def test_topic_checkpoint_opens_exactly_one_automatic_poll(room, monkeypatch):
         assert len(list(db.scalars(select(Poll).where(Poll.session_id == sid)))) == 1
 
 
-def test_feedback_requires_preflight_and_routes_anonymously(room, monkeypatch):
+def test_feedback_requires_preflight_and_routes_named_but_private(room, monkeypatch):
     from app.models import Feedback
     from app.intelligence import classify_feedback, Classification
     from sqlalchemy import select
@@ -114,7 +116,7 @@ def test_feedback_requires_preflight_and_routes_anonymously(room, monkeypatch):
     assert s.post(f"/api/v1/polls/{pid}/feedback", json={"text": text}).status_code == 422
     proof = s.post(
         f"/api/v1/courses/{cid}/questions/preflight",
-        json={"text": text, "anonymous": True, "visibility": "private", "session_id": sid},
+        json={"text": text, "purpose": "feedback", "session_id": sid},
     ).json()["preflight_token"]
     assert s.post(f"/api/v1/polls/{pid}/feedback", json={"text": text, "preflight_token": proof}).status_code == 202
 
@@ -126,7 +128,7 @@ def test_feedback_requires_preflight_and_routes_anonymously(room, monkeypatch):
         f = db.scalar(select(Feedback))
         asyncio.run(classify_feedback(db, f.id))
         q = db.get(Question, f.linked_question_id)
-        assert q.author_id is None and q.anonymous and q.visibility == "private"
+        assert q.author_id == s.get("/api/v1/auth/me").json()["id"] and not q.anonymous and q.visibility == "private"
         assert q.body_original == text and q.ai_modified
     assert s.get(f"/api/v1/sessions/{sid}/snapshot").json()["questions"] == []
     assert t.get(f"/api/v1/sessions/{sid}/lecturer-queue").json()["feedback"][0]["text_original"] == text
