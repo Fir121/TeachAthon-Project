@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api, useAction } from "./api";
 import { QuestionCard, type Question } from "./Questions";
@@ -23,6 +23,9 @@ type Queue = {
 };
 export default function LecturerQueue({ sessionId }: { sessionId: string }) {
   const [sort, setSort] = useState("unanswered");
+  const [grouping, setGrouping] = useState(false);
+  const groupingHelp =
+    "AI automatically groups related questions. Use this mode to manually group questions that should share an answer.";
   const [selected, setSelected] = useState<string[]>([]),
     [open, setOpen] = useState<string | null>(null);
   const q = useQuery({
@@ -34,29 +37,88 @@ export default function LecturerQueue({ sessionId }: { sessionId: string }) {
   const routeFeedback = useAction((id: string) =>
     api(`/feedback/${id}/route`, {}),
   );
-  const group = useAction(() =>
-    api(`/sessions/${sessionId}/clusters`, { question_ids: selected }),
+  const availableIds = new Set(
+    q.data?.groups.flatMap((group) =>
+      group.questions.map((question) => question.id),
+    ) || [],
   );
+  const activeSelection = selected.filter((id) => availableIds.has(id));
+  const group = useAction(() =>
+    api(`/sessions/${sessionId}/clusters`, { question_ids: activeSelection }),
+  );
+  useEffect(() => {
+    if (!grouping) return;
+    function cancel(event: KeyboardEvent) {
+      if (event.key === "Escape" && !group.isPending) {
+        setGrouping(false);
+        setSelected([]);
+      }
+    }
+    window.addEventListener("keydown", cancel);
+    return () => window.removeEventListener("keydown", cancel);
+  }, [grouping, group.isPending]);
   const resolve = useAction((id: string) => api(`/clusters/${id}/resolve`, {}));
   const split = useAction(({ id, ids }: { id: string; ids: string[] }) =>
     api(`/clusters/${id}/split`, { question_ids: ids }),
   );
   return (
     <section className="panel">
-      <div className="row-between">
+      <div className="row-between queue-heading">
         <h2>Question queue</h2>
-        {selected.length > 1 && (
+        {!grouping ? (
           <button
             className="secondary"
-            disabled={group.isPending}
-            onClick={() =>
-              group.mutate(undefined, { onSuccess: () => setSelected([]) })
-            }
+            title={groupingHelp}
+            aria-describedby="grouping-help"
+            onClick={() => {
+              group.reset();
+              setSelected([]);
+              setGrouping(true);
+            }}
           >
-            Group selected ({selected.length})
+            Group questions
           </button>
+        ) : (
+          <div className="actions">
+            <button
+              className="secondary"
+              disabled={group.isPending || activeSelection.length < 2}
+              onClick={() =>
+                group.mutate(undefined, {
+                  onSuccess: () => {
+                    setSelected([]);
+                    setGrouping(false);
+                  },
+                })
+              }
+            >
+              Group selected ({activeSelection.length})
+            </button>
+            <button
+              className="text-button"
+              disabled={group.isPending}
+              onClick={() => {
+                setGrouping(false);
+                setSelected([]);
+              }}
+            >
+              Cancel grouping
+            </button>
+          </div>
         )}
       </div>
+      <p
+        id="grouping-help"
+        className={grouping ? "muted small spaced" : "sr-only"}
+      >
+        {groupingHelp}
+      </p>
+      {grouping && (
+        <p className="muted small spaced" role="status">
+          Select at least two questions. Cancel or press Escape to leave
+          grouping mode.
+        </p>
+      )}
       <p className="muted small spaced">
         This view can combine private and public questions. It is never shown on
         the presenter screen.
@@ -69,7 +131,7 @@ export default function LecturerQueue({ sessionId }: { sessionId: string }) {
           <option value="votes">Most upvoted</option>
         </select>
       </label>
-      <Failure error={q.error} />
+      <Failure error={q.error || group.error || resolve.error || split.error} />
       {q.data?.groups.map((g, i) => (
         <div className="queue-group" key={g.id || g.questions[0].id}>
           <div className="row-between">
@@ -103,20 +165,24 @@ export default function LecturerQueue({ sessionId }: { sessionId: string }) {
           )}
           {g.questions.map((question) => (
             <div key={question.id}>
-              <label className="check small">
-                <input
-                  type="checkbox"
-                  checked={selected.includes(question.id)}
-                  onChange={(e) =>
-                    setSelected((ids) =>
-                      e.target.checked
-                        ? [...ids, question.id]
-                        : ids.filter((id) => id !== question.id),
-                    )
-                  }
-                />
-                Select for grouping
-              </label>
+              {grouping && (
+                <label className="check small grouping-selection">
+                  <input
+                    type="checkbox"
+                    disabled={group.isPending}
+                    aria-label={`Select question: ${question.text}`}
+                    checked={activeSelection.includes(question.id)}
+                    onChange={(e) =>
+                      setSelected((ids) =>
+                        e.target.checked
+                          ? [...ids, question.id]
+                          : ids.filter((id) => id !== question.id),
+                      )
+                    }
+                  />
+                  Include in group
+                </label>
+              )}
               <QuestionCard
                 question={question}
                 teacher
@@ -139,7 +205,6 @@ export default function LecturerQueue({ sessionId }: { sessionId: string }) {
             <p className="small">
               <strong>{f.author}</strong> · Lecturers only
             </p>
-            <span className="eyebrow">Original feedback</span>
             <p className="feedback-original">{f.text_original}</p>
             <p className="muted small">
               {f.linked_question_id

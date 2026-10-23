@@ -134,6 +134,69 @@ test("dismissed questions persist, original notes send directly, and answered le
       s = await student.newPage();
     await t.goto(`/sessions/${sid}`);
     await s.goto(`/sessions/${sid}`);
+    const queuePanel = t.locator("section.panel").filter({
+      has: t.getByRole("heading", { name: "Question queue", exact: true }),
+    });
+    await expect(queuePanel.getByRole("checkbox")).toHaveCount(0);
+    await expect(
+      queuePanel.getByRole("button", { name: "Group questions", exact: true }),
+    ).toHaveAttribute("title", /AI automatically.*manually group/);
+    await queuePanel
+      .getByRole("button", { name: "Group questions", exact: true })
+      .click();
+    await queuePanel
+      .getByRole("checkbox", {
+        name: `Select question: ${deferred.text}`,
+        exact: true,
+      })
+      .check();
+    await t.setViewportSize({ width: 390, height: 844 });
+    for (const label of ["Group selected (1)", "Cancel grouping"]) {
+      const bounds = await queuePanel
+        .getByRole("button", { name: label, exact: true })
+        .boundingBox();
+      expect(bounds).toBeTruthy();
+      expect(bounds!.x).toBeGreaterThanOrEqual(0);
+      expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(390);
+    }
+    await queuePanel.screenshot({
+      path: "test-results/queue-grouping-mobile.png",
+    });
+    await t.setViewportSize({ width: 1280, height: 720 });
+    await queuePanel
+      .getByRole("button", { name: "Cancel grouping", exact: true })
+      .click();
+    await expect(queuePanel.getByRole("checkbox")).toHaveCount(0);
+    await queuePanel
+      .getByRole("button", { name: "Group questions", exact: true })
+      .click();
+    await expect(
+      queuePanel.getByRole("checkbox", {
+        name: `Select question: ${deferred.text}`,
+        exact: true,
+      }),
+    ).not.toBeChecked();
+    for (const text of [deferred.text, answered.text])
+      await queuePanel
+        .getByRole("checkbox", {
+          name: `Select question: ${text}`,
+          exact: true,
+        })
+        .check();
+    await queuePanel
+      .getByRole("button", { name: "Group selected (2)", exact: true })
+      .click();
+    await expect(queuePanel.getByRole("checkbox")).toHaveCount(0);
+    await expect(
+      queuePanel.getByRole("button", {
+        name: "Mark group answered",
+        exact: true,
+      }),
+    ).toBeVisible();
+    await t.screenshot({
+      path: "test-results/queue-grouping-default.png",
+      fullPage: true,
+    });
     const card = t.locator(".question-card").filter({ hasText: deferred.text });
     await card
       .getByRole("button", { name: "Move to discussions", exact: true })
@@ -169,7 +232,7 @@ test("dismissed questions persist, original notes send directly, and answered le
     await s.getByText("Add a note for the lecturer", { exact: true }).click();
     const rawNotes = [
       "I like this course",
-      "The explanations are helpful but I don't understand why binary search halves the interval",
+      "Tell me more about irradiance I love the course what is systems design? course is nice",
     ];
     for (const raw of rawNotes) {
       await s.getByLabel("What would help?").fill(raw);
@@ -214,6 +277,27 @@ test("dismissed questions persist, original notes send directly, and answered le
     expect(praise.text_rewritten).toBeNull();
     const inferred = feedback.find((f: any) => f.text_original === rawNotes[1]);
     expect(inferred.linked_question_id).toBeTruthy();
+    const privateQuestion = await (
+      await teacher.request.get(
+        `/api/v1/questions/${inferred.linked_question_id}`,
+      )
+    ).json();
+    expect(privateQuestion.text.toLowerCase()).toContain("irradiance");
+    expect(privateQuestion.text.toLowerCase()).toContain("systems design");
+    expect(privateQuestion.text).toContain("\n\n");
+    expect(privateQuestion.original).toBe(rawNotes[1]);
+    const privateCard = t
+      .locator(".question-card")
+      .filter({ hasText: "systems design" });
+    await expect(privateCard.locator(".question-body")).toContainText(
+      /irradiance/i,
+    );
+    await expect(privateCard.locator(".question-body")).toContainText(
+      /systems design/i,
+    );
+    await expect(t.getByText("Original feedback", { exact: true })).toHaveCount(
+      0,
+    );
     expect(
       (
         await student.request.get(

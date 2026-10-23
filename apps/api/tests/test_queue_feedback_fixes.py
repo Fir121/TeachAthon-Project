@@ -84,7 +84,10 @@ def test_notes_send_directly_and_only_meaningful_question_words_change(
     assert s.post(f"/api/v1/polls/{pid}/feedback", json={"text": original}).status_code == 202
 
     async def classify(*_):
-        return Classification(classification=classification, soft_rewrite=rewrite)
+        return Classification(
+            classification=classification,
+            requests=[{"source_quote": original, "question": rewrite}] if classification == "question" else [],
+        )
 
     monkeypatch.setattr(OpenAIText, "structured", classify)
     with factory() as db:

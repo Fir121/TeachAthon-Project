@@ -1716,3 +1716,13 @@ form > .error {
 .feedback-original {
   white-space: pre-wrap;
 }
+
+.queue-heading {
+  flex-wrap: wrap;
+}
+.grouping-selection {
+  padding: 10px 12px;
+  margin: 10px 0 6px;
+  border-radius: 8px;
+  background: #eef4ed;
+}

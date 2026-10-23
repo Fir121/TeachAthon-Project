@@ -116,7 +116,10 @@ def test_feedback_sends_directly_and_routes_named_but_private(room, monkeypatch)
     assert s.post(f"/api/v1/polls/{pid}/feedback", json={"text": text}).status_code == 202
 
     async def classify(*_):
-        return Classification(classification="question", soft_rewrite="Please explain the sorted interval invariant.")
+        return Classification(
+            classification="question",
+            requests=[{"source_quote": text, "question": "Please explain the sorted interval invariant."}],
+        )
 
     monkeypatch.setattr(OpenAIText, "structured", classify)
     with factory() as db:

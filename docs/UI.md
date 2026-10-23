@@ -44,3 +44,5 @@ Create lecture includes Upload slides, preparation status/retry and automatic se
 ## Follow-up corrections — 2026-10-23
 
 Move to discussions replaces Dismiss and hides a question only from live queues; the course forum retains it and its answered state. Answered questions without a precise excerpt show Answered in [lecture title] linking the full recording, with live/processing availability text and no invented timestamp. Send note to lecturer is a single direct action without source checking. Poll feedback & AI processing always shows exact original feedback; useful question rewrites appear separately in the private queue, and punctuation-only changes receive no AI-edited label.
+
+Manual queue grouping starts with **Group questions**; selection checkboxes appear only in that mode. Hover/help explains that automatic AI grouping already runs and this control allows manual grouping. Save requires two questions; Cancel/Escape clears selection. Poll feedback has no redundant “Original feedback” tag. Multiple requests in one note remain visible as separate paragraphs in its single private queue entry; the full original stays inspectable.

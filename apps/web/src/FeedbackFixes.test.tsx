@@ -113,6 +113,9 @@ test("feedback panel always shows the original, separately from the derived ques
   ).not.toBeInTheDocument();
   expect(screen.queryByText(/AI edited/)).not.toBeInTheDocument();
   expect(screen.getByText("Question sent to the private queue")).toBeVisible();
+  expect(
+    screen.queryByText("Original feedback", { exact: true }),
+  ).not.toBeInTheDocument();
 });
 
 const question: Question = {
@@ -195,4 +198,69 @@ test("an answered question without recording does not promise a pending excerpt"
   expect(screen.getByText("Answered by lecturer")).toBeVisible();
   expect(screen.queryByRole("link")).not.toBeInTheDocument();
   expect(screen.queryByText(/excerpt pending/)).not.toBeInTheDocument();
+});
+
+test("manual grouping is opt-in, cancel clears selection, and saving leaves selection mode", async () => {
+  const queue = {
+    groups: [
+      {
+        id: null,
+        canonical_text: "First question",
+        questions: [
+          { ...question, id: "q1", text: "First question", state: "open" },
+        ],
+      },
+      {
+        id: null,
+        canonical_text: "Second question",
+        questions: [
+          { ...question, id: "q2", text: "Second question", state: "open" },
+        ],
+      },
+    ],
+    feedback: [],
+    ai_jobs: [],
+  };
+  const fetcher = vi
+    .fn()
+    .mockImplementation((path: string) =>
+      Promise.resolve(
+        new Response(
+          JSON.stringify(path.endsWith("/clusters") ? { id: "g" } : queue),
+        ),
+      ),
+    );
+  vi.stubGlobal("fetch", fetcher);
+  wrap(<LecturerQueue sessionId="s" />);
+  await screen.findByRole("button", { name: "First question" });
+  expect(screen.queryAllByRole("checkbox")).toHaveLength(0);
+  expect(
+    screen.getByRole("button", { name: "Group questions" }),
+  ).toHaveAttribute("title", expect.stringContaining("AI automatically"));
+  fireEvent.click(screen.getByRole("button", { name: "Group questions" }));
+  fireEvent.click(
+    screen.getByRole("checkbox", { name: "Select question: First question" }),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Cancel grouping" }));
+  expect(screen.queryAllByRole("checkbox")).toHaveLength(0);
+  fireEvent.click(screen.getByRole("button", { name: "Group questions" }));
+  expect(
+    screen.getByRole("checkbox", { name: "Select question: First question" }),
+  ).not.toBeChecked();
+  fireEvent.keyDown(window, { key: "Escape" });
+  expect(screen.queryAllByRole("checkbox")).toHaveLength(0);
+  fireEvent.click(screen.getByRole("button", { name: "Group questions" }));
+  fireEvent.click(
+    screen.getByRole("checkbox", { name: "Select question: First question" }),
+  );
+  fireEvent.click(
+    screen.getByRole("checkbox", { name: "Select question: Second question" }),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Group selected (2)" }));
+  await screen.findByRole("button", { name: "Group questions" });
+  const request = fetcher.mock.calls.find(
+    (call) => call[0] === "/api/v1/sessions/s/clusters",
+  );
+  expect(JSON.parse(request![1].body)).toEqual({ question_ids: ["q1", "q2"] });
+  expect(screen.queryAllByRole("checkbox")).toHaveLength(0);
 });

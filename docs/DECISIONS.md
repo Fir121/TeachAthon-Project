@@ -96,3 +96,8 @@
 - Dismiss means Move to discussions, not removal. A separate discussion-only flag hides it from live queues while retaining forum/search visibility, original privacy, session context and resolution. Old dismissed records are recovered; actual deletes stay deleted.
 - Answered questions retain a whole-lecture recording link independently of AI excerpt success. Precise clips take precedence; the fallback has no fabricated timestamp and labels live/processing states honestly. Missing/disabled/failed recordings produce no fake playback.
 - Feedback notes send directly, without source checks/proofs. The lecturer feedback panel shows the original text, while a useful derived question and its edit label stay in the private queue. General feedback never gets rewritten, and cosmetic punctuation/case/spacing edits are ignored. Existing cosmetic feedback derivatives are repaired without altering originals/human edits.
+
+## Manual grouping and complete feedback requests — 2026-10-23
+
+- Owner requested grouping checkboxes only after an explicit action, retention of all questions in mixed notes, and removal of the Original feedback tag. Group questions enters selection mode with tooltip/visible help explaining existing AI grouping; Cancel/Escape clears selection and saving exits it.
+- Delegated default: keep one private queue entry per note, with all extracted requests in separate paragraphs. Require ordered exact source quotes, falling back to the complete original when extraction is invalid or leaves an explicit request cue behind. No schema migration or public contract change; source quotes are transient. Safe reclassification preserves human edits, answers, movement and manual grouping. AI_WORKFLOW.md records the prompt, storage, guard and limitations.
