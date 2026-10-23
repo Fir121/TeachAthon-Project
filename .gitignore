@@ -17,3 +17,4 @@ backups/
 
 # Generated PDF.js rendering assets (copied from the installed package).
 apps/web/public/pdfjs/
+.ruff_cache
