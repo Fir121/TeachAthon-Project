@@ -2289,3 +2289,52 @@ span.diagram-spinner {
     max-height: 65px;
   }
 }
+
+/* Opt-in signing stays in normal document flow; all controls fit a 360px phone. */
+.bsl-panel {
+  min-width: 0;
+  margin-block: 1rem;
+}
+.bsl-panel h2 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+.bsl-frame {
+  display: block;
+  width: 100%;
+  height: clamp(260px, 45vh, 400px);
+  border: 0;
+  border-radius: 12px;
+  margin-block: 12px;
+  background: #eef2f5;
+}
+.bsl-controls {
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: end;
+}
+.bsl-controls label {
+  width: auto;
+  min-width: 110px;
+  margin: 0;
+}
+.bsl-controls button,
+.bsl-controls select {
+  min-height: 44px;
+}
+.bsl-panel p {
+  overflow-wrap: anywhere;
+}
+.bsl-captions {
+  max-height: 180px;
+  overflow: auto;
+  margin-block: 12px;
+}
+@media (max-width: 480px) {
+  .bsl-panel {
+    padding: 14px;
+  }
+  .bsl-controls > * {
+    flex: 1 1 125px;
+  }
+}

@@ -92,3 +92,7 @@ Organize backend by clear domain module and shared models rather than elaborate 
 ## Interactive diagram extension (0016)
 
 Existing Postgres worker types `analyse_diagrams` / `generate_diagram` use a separate multimodal provider contract. Six-image analysis checkpoints yield to other queue work. Durable proposals/revisions remain private until lecturer approval and session-start publication under the shared lecture lock. No provider call holds that lock. Snapshots project only published active-slide metadata; replay projects historical published slides. An authenticated server-built HTML document executes only inside an opaque allow-scripts iframe. Caddy forwards its distinct CSP without the main app's incompatible global CSP; generated code never enters React's DOM. See AI_WORKFLOW.md §14 and DEPLOYMENT.md for security bounds and configuration.
+
+## Optional experimental BSL dependency
+
+`compose.bsl.yaml` adds only a private same-VM Kozha container/network shared with API, no public port or runtime egress. Existing final caption events/persisted transcript API drive an opt-in student queue and saved-window replay. API student/session authorization fronts caption-ID-only planning and a narrow engine/corpus asset allowlist (including authenticated HEAD/range), never raw upstream routes. Trusted pinned CWASA runs unchanged in a same-origin iframe with a scoped renderer CSP; it is distinct from opaque generated diagrams. See BSL_AVATAR.md and AI_WORKFLOW.md §16.

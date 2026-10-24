@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { api, useAction } from "./api";
 import { SlideView, type Snapshot, type Annotation } from "./Live";
 import { ExploreDiagram } from "./InteractiveDiagrams";
+import BslAvatar from "./BslAvatar";
 import { Failure, Status } from "./CoursePage";
 export type Segment = {
   id: string;
@@ -55,6 +56,8 @@ export default function Replay() {
     [time, setTime] = useState(Number(params.get("t")) || 0),
     [search, setSearch] = useState(""),
     [playbackError, setPlaybackError] = useState(false),
+    [playing, setPlaying] = useState(false),
+    [seekToken, setSeekToken] = useState(0),
     player = useRef<HTMLAudioElement>(null);
   const snapshot = useQuery({
     queryKey: ["snapshot", id],
@@ -86,6 +89,7 @@ export default function Replay() {
     index = replaySlide(timeline.data || [], time);
   function seek(ms: number) {
     setTime(ms);
+    setSeekToken((n) => n + 1);
     if (player.current) player.current.currentTime = ms / 1000;
   }
   if (!data) return <Failure error={snapshot.error} />;
@@ -108,6 +112,14 @@ export default function Replay() {
         <span className="eyebrow">LECTURE ARCHIVE</span>
         <h1>{data.lecture.title}</h1>
       </header>
+      {data.membership === "student" && (
+        <BslAvatar
+          key={id}
+          sid={id!}
+          startedAt={data.session.started_at}
+          replay={{ time, playing, seekToken }}
+        />
+      )}
       <Failure error={timeline.error} />
       {timeline.isError && (
         <button
@@ -149,20 +161,27 @@ export default function Replay() {
           {status.data?.recording_state === "ready" ? (
             <>
               <audio
+                onPlay={() => setPlaying(true)}
+                onPause={() => setPlaying(false)}
+                onEnded={() => setPlaying(false)}
                 controls
                 ref={player}
                 src={`/api/v1/sessions/${id}/recording`}
                 onTimeUpdate={(e) =>
                   setTime(e.currentTarget.currentTime * 1000)
                 }
-                onSeeking={(event) =>
-                  setTime(event.currentTarget.currentTime * 1000)
-                }
+                onSeeking={(event) => {
+                  setTime(event.currentTarget.currentTime * 1000);
+                  setSeekToken((n) => n + 1);
+                }}
                 onSeeked={(event) =>
                   setTime(event.currentTarget.currentTime * 1000)
                 }
                 onLoadedMetadata={() => seek(Number(params.get("t")) || 0)}
-                onError={() => setPlaybackError(true)}
+                onError={() => {
+                  setPlaybackError(true);
+                  setPlaying(false);
+                }}
               />
               {playbackError && (
                 <div className="error" role="alert">

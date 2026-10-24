@@ -52,3 +52,7 @@
 ## M8 — Owner-promoted interactive slide diagrams
 
 Optional batched actual-image opportunity analysis → any-slide/on-demand generation → private running preview/refinement → deliberate approval → immutable session publication → independent live student exploration → historical archive/slide-timeline exploration. Core permissions, stale-source/jobs, unique approval, zero suggestions, multimodal request validation and the actual opaque CSP renderer are tested. Feature is integrated in the existing worker/API/React/Compose stack. Verification and residual platform limits are recorded in PROGRESS.md / AI_WORKFLOW.md.
+
+## M9 — Owner-promoted experimental BSL signing demo
+
+Standalone actual-corpus/CWASA render test first, then optional student live-final queue and saved-window archive signing, private same-VM Kozha planner, strict message/session boundaries, real pause/resume/speed, visible omissions/latency, captions fallback and disclosed prepared vocabulary script. No new STT, synthetic gestures or modified engine. Required duplicate/unavailable-renderer/mobile/session-transition checks and exact observed results live in BSL_AVATAR.md / PROGRESS.md.

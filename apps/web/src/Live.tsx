@@ -24,6 +24,7 @@ import { Failure, type Lecture } from "./CoursePage";
 import { AudioControls } from "./AudioCapture";
 import LecturerQueue from "./LecturerQueue";
 import FeedbackNote from "./FeedbackNote";
+import BslAvatar from "./BslAvatar";
 import { Dialog, useDialog } from "./Dialog";
 import ImageUpload from "./ImageUpload";
 import {
@@ -875,6 +876,14 @@ export default function Live() {
                 data.latest_caption ||
                 `Transcription ${s.transcript_state}. Captions appear when microphone transcription is active.`}
             </div>
+          )}
+          {!teacher && (
+            <BslAvatar
+              key={id}
+              sid={id!}
+              startedAt={s.started_at}
+              caption={caption || data.latest_caption}
+            />
           )}
           {data.poll && (
             <PollCard

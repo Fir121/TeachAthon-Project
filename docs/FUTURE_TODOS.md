@@ -120,3 +120,5 @@ Implementation: `apps/api/app/diagrams.py`, `apps/api/app/ai/diagrams.py`, `apps
 5. Keep the human-first, course-scoped retrieval and lecturer-control principles intact throughout future iterations.
 
 **Last updated:** 2026-10-23 · **Owner review:** Pending
+
+Owner promotion 2026-10-24: the limited **experimental BSL corpus-sign avatar** is now active scope, with a private Kozha dependency, optional student panel and disclosed prepared vocabulary script. See BSL_AVATAR.md / PROGRESS.md. Qualified human interpretation, validated fluent BSL and broad multilingual support remain deferred; this experiment does not complete those goals.

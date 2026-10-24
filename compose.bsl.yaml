@@ -1,0 +1,29 @@
+# Optional same-VM service. No host port and no outbound network for Kozha.
+services:
+  api:
+    environment:
+      BSL_ENABLED: 'true'
+      BSL_KOZHA_URL: http://kozha:8000
+    networks: [default, bsl]
+  kozha:
+    build: {context: ., dockerfile: infra/bsl/Dockerfile}
+    networks: [bsl]
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 1g
+    cpus: 1.0
+    pids_limit: 128
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    logging:
+      driver: json-file
+      options: {max-size: '10m', max-file: '3'}
+    restart: unless-stopped
+networks:
+  bsl:
+    internal: true

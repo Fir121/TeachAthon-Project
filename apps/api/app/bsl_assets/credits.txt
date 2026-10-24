@@ -1,0 +1,50 @@
+MIT License
+
+Copyright (c) 2026 Zhan Amankeldy and Bogdan Mironov
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+LectureLoop changes: adapted Kozha extension/panel.html and panel.js for a BSL-only,
+validated same-origin interface, real completion events, no fingerspelling, authenticated
+asset access, explicit failures. Upstream engine/configuration/avatar files are unchanged.
+Kozha revision: ce93d533b24740879df1e84cbb5341dfa575fc1f
+https://github.com/zhan-a/Kozha
+
+CWASA: Copyright UEA (2005–2026), Virtual Humans Group, University of East Anglia.
+Underlying software used without modification on terms equivalent to CC BY-ND.
+Conditions: https://vh.cmp.uea.ac.uk/index.php/CWASA_Conditions_of_Use
+License: https://creativecommons.org/licenses/by-nd/4.0/
+Example pages upstream are CC BY-SA; this wrapper adapts Kozha's MIT panel.
+
+BSL signs: DictaSign Corpus, DictaSign consortium / IDGS, Universität Hamburg.
+CC BY-NC-SA 3.0 Unported (noncommercial, attribution, share alike).
+https://www.sign-lang.uni-hamburg.de/dicta-sign/portal/
+https://creativecommons.org/licenses/by-nc-sa/3.0/
+Efthimiou, E., Fotinea, S.-E., Hanke, T., Glauert, J., Bowden, R., Braffort, A.,
+Collet, C., Maragos, P., & Lefebvre-Albaret, F. (2012). The DictaSign Wiki:
+Enabling Web Communication for the Deaf. Computers Helping People with Special Needs.
+
+HamNoSys: Institute of German Sign Language (IDGS), Universität Hamburg, CC BY 4.0.
+https://www.sign-lang.uni-hamburg.de/dgs-korpus/index.php/hamnosys-97.html
+English NLP: spaCy / Explosion AI and en_core_web_sm, MIT.
+Kozha credits source: https://github.com/zhan-a/Kozha/blob/ce93d533b24740879df1e84cbb5341dfa575fc1f/public/credits.html
+
+Corpus provenance does not certify the planner's grammar, sense selection, avatar
+intelligibility or this demo's sentence quality. This experimental vocabulary demo
+has not been reviewed by qualified BSL signers and does not replace an interpreter.

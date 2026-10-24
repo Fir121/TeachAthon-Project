@@ -7,7 +7,7 @@
         Referrer-Policy same-origin
     }
     @application {
-        not path_regexp diagram ^/api/v1/diagrams/[0-9a-f-]+/render$
+        not path_regexp renderer ^/api/v1/(diagrams/[0-9a-f-]+/render|sessions/[0-9a-f-]+/bsl/assets/.*)$
     }
     header @application Content-Security-Policy "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; style-src 'self' 'unsafe-inline'; connect-src 'self' ws: wss:; frame-ancestors 'none'"
     handle /api/* {

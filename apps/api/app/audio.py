@@ -140,13 +140,26 @@ def recording(sid: str, db: DB, user: Actor):
 
 
 @router.get("/api/v1/sessions/{sid}/transcript")
-def transcript(sid: str, db: DB, user: Actor):
+def transcript(sid: str, db: DB, user: Actor, recent: int = 0):
     s, _ = live(db, sid, user)
+    if recent < 0 or recent > 32:
+        raise HTTPException(422, "Recent caption count must be between 0 and 32.")
+    query = select(Transcript).where(Transcript.session_id == sid)
+    rows = (
+        list(db.scalars(query.order_by(Transcript.start_ms.desc()).limit(recent)))
+        if recent
+        else list(db.scalars(query.order_by(Transcript.start_ms).limit(10000)))
+    )
     return [
-        {"id": t.id, "start_ms": t.start_ms, "end_ms": t.end_ms, "text": t.text, "timing": t.timing}
-        for t in db.scalars(
-            select(Transcript).where(Transcript.session_id == sid).order_by(Transcript.start_ms).limit(10000)
-        )
+        {
+            "id": t.id,
+            "item_id": t.item_id,
+            "start_ms": t.start_ms,
+            "end_ms": t.end_ms,
+            "text": t.text,
+            "timing": t.timing,
+        }
+        for t in (reversed(rows) if recent else rows)
     ]
 
 

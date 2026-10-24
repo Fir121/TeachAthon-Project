@@ -50,3 +50,7 @@ Students independently opt into an **Explore interactive diagram** modal only on
 
 
 Owner UI revision: diagram preparation uses an integrated slide workspace with explicit selection of one or several slides, honest per-slide loading and a ready list that does not interrupt browsing. Lecturer review uses a dominant laptop visual area, compact expandable source reference, in-place refinement, and Approve and next without an extra checkbox. New generated layouts must adapt to laptop width/height and stack on phones. Existing published artifacts retain their source; viewer improvements apply across live and replay.
+
+## Experimental BSL avatar — promoted into scope 2026-10-24
+
+Owner explicitly promoted a student-only opt-in **BSL Avatar (Experimental)** demonstration, reusing existing final captions with bounded queues, visible omissions/latency, real renderer controls and caption fallback. The same-VM private Kozha planner and unchanged CWASA engine use only actual BSL corpus signs. A clearly separate prepared vocabulary script supports demonstrations when live technical translation is unsupported. Saved caption timestamps support experimental archive signing. This supersedes the earlier out-of-scope entry only for this unvalidated experiment, not for a promise of qualified interpretation or fluent unrestricted BSL. See BSL_AVATAR.md and AI_WORKFLOW.md §16.

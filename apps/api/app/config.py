@@ -15,6 +15,8 @@ class Settings(BaseSettings):
     query_embedding_timeout_seconds: float = Field(default=10, gt=0, le=10)
     answer_timeout_seconds: float = Field(default=10, gt=0, le=10)
     ocr_model_root: str = "/opt/lectureloop/models"
+    bsl_enabled: bool = False
+    bsl_kozha_url: str = "http://kozha:8000"
     openai_api_key: str = ""
     openai_base_url: str = "https://api.openai.com/v1"
     openai_text_model: str = "gpt-4.1-mini"

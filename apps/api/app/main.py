@@ -284,3 +284,7 @@ app.include_router(pictures_router)
 from .diagrams import router as diagrams_router
 
 app.include_router(diagrams_router)
+
+from .bsl import router as bsl_router
+
+app.include_router(bsl_router)
