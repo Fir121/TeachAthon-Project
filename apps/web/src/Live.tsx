@@ -29,6 +29,7 @@ import ImageUpload from "./ImageUpload";
 import {
   DiagramPreparation,
   ExploreDiagram,
+  InteractiveDiagramViewer,
   type Diagram,
 } from "./InteractiveDiagrams";
 export type Session = {
@@ -562,6 +563,138 @@ export function SlideView({
     </>
   );
 }
+export function StudentActivityAlerts({
+  sessionId,
+  courseId,
+  poll,
+  diagram,
+  live,
+}: {
+  sessionId: string;
+  courseId: string;
+  poll: Poll | null;
+  diagram?: Diagram;
+  live: boolean;
+}) {
+  const dialog = useDialog();
+  const seen = useRef(new Set<string>());
+  const pollTrigger = useRef<HTMLButtonElement>(null);
+  const diagramTrigger = useRef<HTMLButtonElement>(null);
+  const [exploring, setExploring] = useState<string | null>(null);
+  const pollName = poll?.status === "open" ? `student-poll-${poll.id}` : null;
+  const diagramName = diagram ? `student-diagram-${diagram.id}` : null;
+  useEffect(() => {
+    if (!dialog.active) setExploring(null);
+  }, [dialog.active]);
+  useEffect(() => {
+    function notify() {
+      if (dialog.active) {
+        if (
+          (dialog.active.startsWith("student-poll-") &&
+            (!live || dialog.active !== pollName)) ||
+          (dialog.active.startsWith("student-diagram-") &&
+            (!live || dialog.active !== diagramName))
+        )
+          dialog.close();
+        return;
+      }
+      // Let an existing question/note dialog finish; never stack activity modals.
+      if (!live || document.querySelector("dialog[open]")) return;
+      const next =
+        pollName && poll?.my_vote === null && !seen.current.has(pollName)
+          ? pollName
+          : diagramName && !seen.current.has(diagramName)
+            ? diagramName
+            : null;
+      if (next) {
+        seen.current.add(next);
+        dialog.open(
+          next,
+          (next === pollName ? pollTrigger.current : diagramTrigger.current) ||
+            undefined,
+        );
+      }
+    }
+    notify();
+    const timer = window.setInterval(notify, 500);
+    return () => window.clearInterval(timer);
+  }, [dialog.active, pollName, diagramName, live, poll?.my_vote, sessionId]);
+  if (!live) return null;
+  return (
+    <>
+      <div className="actions spaced" aria-label="Classroom activities">
+        {pollName && (
+          <button
+            ref={pollTrigger}
+            className="primary"
+            onClick={(e) => dialog.open(pollName, e.currentTarget)}
+          >
+            {poll?.my_vote === null
+              ? "Answer understanding poll"
+              : "View your poll response"}
+          </button>
+        )}
+        {diagramName && (
+          <button
+            ref={diagramTrigger}
+            className="secondary"
+            onClick={(e) => {
+              seen.current.add(diagramName);
+              setExploring(diagramName);
+              dialog.open(diagramName, e.currentTarget);
+            }}
+          >
+            Explore interactive diagram
+          </button>
+        )}
+      </div>
+      {poll && pollName && dialog.active === pollName && (
+        <Dialog
+          title="Your lecturer opened a poll"
+          description="Take a moment to share how the lesson is landing."
+          onClose={dialog.close}
+        >
+          <PollCard
+            poll={poll}
+            teacher={false}
+            courseId={courseId}
+            sessionId={sessionId}
+          />
+          <button className="secondary spaced" onClick={dialog.close}>
+            {poll.my_vote === null ? "Not now" : "Done"}
+          </button>
+        </Dialog>
+      )}
+      {diagram &&
+        diagramName &&
+        dialog.active === diagramName &&
+        (exploring === diagramName ? (
+          <InteractiveDiagramViewer diagram={diagram} onClose={dialog.close} />
+        ) : (
+          <Dialog
+            title="Explore this slide"
+            description="An interactive diagram is available for you to try."
+            onClose={dialog.close}
+          >
+            <h3>{diagram.title}</h3>
+            <p className="spaced">{diagram.summary}</p>
+            <div className="actions spaced">
+              <button
+                className="primary"
+                onClick={() => setExploring(diagramName)}
+              >
+                Explore diagram
+              </button>
+              <button className="secondary" onClick={dialog.close}>
+                Not now
+              </button>
+            </div>
+          </Dialog>
+        ))}
+    </>
+  );
+}
+
 export default function Live() {
   const { id } = useParams(),
     [params] = useSearchParams(),
@@ -805,11 +938,23 @@ export default function Live() {
           <section className="panel presenter-surface" ref={presenter}>
             {slides}
           </section>
-          <ExploreDiagram
-            key={`${id}:${index}`}
-            diagrams={data.diagrams}
-            index={index}
-          />
+          {teacher ? (
+            <ExploreDiagram
+              key={`${id}:${index}`}
+              diagrams={data.diagrams}
+              index={index}
+            />
+          ) : (
+            <StudentActivityAlerts
+              sessionId={id!}
+              courseId={s.course_id}
+              poll={data.poll}
+              diagram={data.diagrams?.find(
+                (diagram) => diagram.slide_index === index,
+              )}
+              live={s.state === "live"}
+            />
+          )}
           {teacher && (
             <section className="panel spaced">
               <div className="row-between">
@@ -876,7 +1021,7 @@ export default function Live() {
                 `Transcription ${s.transcript_state}. Captions appear when microphone transcription is active.`}
             </div>
           )}
-          {data.poll && (
+          {teacher && data.poll && (
             <PollCard
               poll={data.poll}
               teacher={teacher}

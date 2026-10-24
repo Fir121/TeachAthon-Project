@@ -424,3 +424,57 @@ test("retained original feedback offers explicit single-attempt retry", async ()
   );
   expect(screen.getByText("More detail would help")).toBeVisible();
 });
+
+test("sending clears the note, ends pending state and permits a distinct new note", async () => {
+  let accept!: (response: Response) => void;
+  const fetcher = vi
+    .fn()
+    .mockImplementationOnce(
+      () =>
+        new Promise<Response>((resolve) => {
+          accept = resolve;
+        }),
+    )
+    .mockImplementationOnce(() =>
+      Promise.resolve(
+        new Response(JSON.stringify({ status: "received" }), { status: 202 }),
+      ),
+    );
+  vi.stubGlobal("fetch", fetcher);
+  wrap(<FeedbackNote pollId="poll" />);
+  fireEvent.click(screen.getByText("Add a note for the lecturer"));
+  const field = screen.getByLabelText("What would help?");
+  fireEvent.change(field, { target: { value: "Please explain integration" } });
+  const form = field.closest("form")!;
+  fireEvent.submit(form);
+  fireEvent.submit(form);
+  await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(1));
+  expect(
+    await screen.findByRole("button", { name: "Sending…" }),
+  ).toHaveAttribute("aria-busy", "true");
+  accept(new Response(JSON.stringify({ status: "received" }), { status: 202 }));
+  await screen.findByText(/Note sent/);
+  expect(field).toHaveValue("");
+  expect(field).toBeEnabled();
+  expect(field.closest("details")).not.toHaveAttribute("open");
+  expect(screen.getByRole("status").closest("details")).toBeNull();
+  expect(screen.getByRole("status")).toBeVisible();
+  fireEvent.click(screen.getByText("Add a note for the lecturer"));
+  expect(
+    screen.getByRole("button", { name: "Send note to lecturer" }),
+  ).toHaveAttribute("aria-busy", "false");
+  fireEvent.change(field, { target: { value: "A separate new note" } });
+  expect(screen.getByText("Note sent.", { exact: true })).toBeVisible();
+  fireEvent.submit(form);
+  await waitFor(() => expect(field).toHaveValue(""));
+  expect(fetcher).toHaveBeenCalledTimes(2);
+  expect(JSON.parse(fetcher.mock.calls[0][1].body)).toEqual({
+    text: "Please explain integration",
+  });
+  expect(JSON.parse(fetcher.mock.calls[1][1].body)).toEqual({
+    text: "A separate new note",
+  });
+  expect(fetcher.mock.calls.every((call) => call[1].method === "POST")).toBe(
+    true,
+  );
+});

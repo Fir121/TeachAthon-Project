@@ -2289,3 +2289,8 @@ span.diagram-spinner {
     max-height: 65px;
   }
 }
+
+/* An empty note is unavailable, not still sending. */
+.note-submit:disabled:not([aria-busy="true"]) {
+  cursor: default;
+}

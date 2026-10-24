@@ -273,13 +273,20 @@ test("approved diagrams execute in an opaque CSP iframe, follow live slides and 
     const page = await student.newPage();
     await page.goto(`/sessions/${sid}`);
     await expect(
+      page.getByRole("dialog", { name: "Explore this slide" }),
+    ).toBeVisible();
+    await page.screenshot({
+      path: "test-results/student-diagram-alert.png",
+      fullPage: true,
+    });
+    await expect(
       page.getByText("Explore interactive diagram", { exact: true }),
     ).toBeVisible();
     const responsePromise = page.waitForResponse((r) =>
       r.url().includes(`/diagrams/${did}/render?`),
     );
     await page
-      .getByText("Explore interactive diagram", { exact: true })
+      .getByRole("button", { name: "Explore diagram", exact: true })
       .click();
     const renderResponse = await responsePromise;
     expect(renderResponse.status()).toBe(200);
@@ -355,6 +362,9 @@ test("approved diagrams execute in an opaque CSP iframe, follow live slides and 
     await page
       .getByText("Explore interactive diagram", { exact: true })
       .click();
+    await expect(
+      page.getByRole("dialog", { name: "Explore this slide" }),
+    ).toHaveCount(0);
     await expect(
       page.frameLocator("iframe.diagram-frame").locator("#remaining"),
     ).toHaveText("256");

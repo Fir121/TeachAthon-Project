@@ -277,6 +277,15 @@ test("dismissed questions persist, original notes send directly, and answered le
         .getByRole("button", { name: "Send note to lecturer", exact: true })
         .click();
       await expect(s.getByText(/Note sent/)).toBeVisible();
+      await expect(s.getByLabel("What would help?")).not.toBeVisible();
+      await s.getByText("Add a note for the lecturer", { exact: true }).click();
+      await expect(s.getByLabel("What would help?")).toHaveValue("");
+      await expect(
+        s.getByRole("button", { name: "Send note to lecturer", exact: true }),
+      ).toHaveAttribute("aria-busy", "false");
+      await expect(
+        s.getByRole("button", { name: "Send note to lecturer", exact: true }),
+      ).toHaveCSS("cursor", "default");
     }
     expect(noteSearches).toBe(0);
     await expect(

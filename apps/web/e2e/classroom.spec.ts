@@ -90,6 +90,16 @@ test("lecturer and mobile student share slides, polls and named questions and le
     await t.getByRole("button", { name: "Next slide" }).click();
     await expect(s.getByText("Slide 2 / 2")).toBeVisible();
     await t.getByRole("button", { name: "Open understanding poll" }).click();
+    await expect(
+      s.getByRole("dialog", { name: "Your lecturer opened a poll" }),
+    ).toBeVisible();
+    await s.screenshot({
+      path: "test-results/student-poll-alert.png",
+      fullPage: true,
+    });
+    await s.goBack();
+    await expect(s.getByRole("dialog")).toHaveCount(0);
+    await s.getByRole("button", { name: "Answer understanding poll" }).click();
     await s.getByRole("button", { name: /Somewhat understood/ }).click();
     await expect(s.getByText(/Response saved/)).toBeVisible();
     await expect(t.getByText("1 response · aggregate only")).toBeVisible();
@@ -98,6 +108,8 @@ test("lecturer and mobile student share slides, polls and named questions and le
     await expect(
       s.getByRole("button", { name: /Unsure or confused/ }),
     ).toHaveAttribute("aria-pressed", "true");
+    await s.getByRole("button", { name: "Done", exact: true }).click();
+    await expect(s.getByRole("dialog")).toHaveCount(0);
     await s
       .getByRole("button", { name: "Ask a question", exact: true })
       .click();
@@ -127,6 +139,7 @@ test("lecturer and mobile student share slides, polls and named questions and le
     await expect(
       s.getByText("Answered by lecturer", { exact: true }),
     ).toBeVisible();
+    await s.getByRole("button", { name: "View your poll response" }).click();
     await s.getByText("Add a note for the lecturer", { exact: true }).click();
     await s
       .getByLabel("What would help?")
