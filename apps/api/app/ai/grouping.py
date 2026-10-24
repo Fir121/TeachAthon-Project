@@ -251,6 +251,20 @@ def queue_semantic_backfill(db):
             .limit(1)
         )
         if not active:
+            if kind == "match_answer_excerpt":
+                failed = db.scalar(
+                    select(Job)
+                    .where(Job.target_id == target, Job.type == kind, Job.status == "failed")
+                    .order_by(Job.created_at.desc())
+                    .with_for_update()
+                    .limit(1)
+                )
+                if failed:
+                    from ..models import now
+
+                    failed.status, failed.attempts = "queued", 0
+                    failed.next_run_at, failed.lease_until, failed.error_message = now(), None, None
+                    return
             enqueue_index(db, cid, target, kind)
 
     for note in db.scalars(select(Feedback)):
@@ -277,7 +291,10 @@ def queue_semantic_backfill(db):
         # Reassess earlier automatic coverage decisions; never restore removed/manual links.
         if (
             (
-                match.get("state") in {"pending", "unavailable", "partial"}
+                (
+                    match.get("state") in {"pending", "unavailable", "partial"}
+                    and match.get("version") != "semantic-direct-response-v2"
+                )
                 or (match.get("state") == "ready" and match.get("version") == "semantic-window-coverage-v1")
             )
             and not match.get("lecturer_selected")

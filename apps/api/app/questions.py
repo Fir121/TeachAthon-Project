@@ -152,7 +152,8 @@ def question_json(db, q, user, teacher):
     if (
         match.get("state") == "ready"
         and not match.get("lecturer_selected")
-        and match.get("version") not in {"semantic-window-coverage-v1", "semantic-direct-response-v2"}
+        and match.get("version")
+        not in {"semantic-window-coverage-v1", "semantic-direct-response-v2", "semantic-segment-response-v3"}
     ):
         match = (
             {

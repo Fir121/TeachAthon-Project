@@ -182,13 +182,18 @@ async def match_excerpt(db, qid):
 def match_job(db, job):
     try:
         asyncio.run(match_excerpt(db, job.target_id))
-    except Exception:
+    except Exception as exc:
         db.rollback()
         q = db.get(Question, job.target_id)
-        if q and q.match_json.get("state") != "removed" and not q.match_json.get("lecturer_selected"):
+        if q and q.match_json.get("state") not in {"removed", "ready"} and not q.match_json.get("lecturer_selected"):
+            from .ai.recording_matches import VERSION
+
             q.match_json = {
                 "state": "unavailable",
                 "message": "Excerpt matching is unavailable. The lecturer answer is unchanged.",
+                "version": VERSION,
+                "error_code": "invalid_response_selection" if isinstance(exc, ValueError) else "processing_failed",
+                "error_type": type(exc).__name__,
             }
             db.commit()
         raise

@@ -135,3 +135,8 @@
 ## Binary recording-response relevance — 2026-10-24
 
 Owner replaced full/partial/none answer-quality assessment with direct/not_relevant response matching. Repeating or identifying a question and giving some attempted answer is enough; correctness, depth and exhaustiveness are not graded. Mere acknowledgement or repetition without a recorded answer is not enough. Any relevant response to a multipart question can be linked without lecturer review of partial coverage. Human answered state, private permissions and optional removal/correction remain independent. Versioned automatic reassessment updates earlier coverage-model associations while protecting manual and removed links.
+
+
+## Bound recording references and actual utterance timestamps — 2026-10-24
+
+An actual-course trace proved the model identified a response but returned the first UUID of a compound window ID; validation rejected it. Context starts were also too early for playback. The fix uses short typed aliases, provider/local finite-enum validation and same-window ordered utterance bounds, with timestamps resolved exclusively from captured transcript rows. One model call decides binary response relevance plus boundaries; no regex semantics, UUID guessing or invented timing. Completed old binary decisions remain usable without bulk replay. The specifically approved failed question is retried under v3; failed rechecks preserve ready/manual/removed links and keep safe diagnostic metadata.
