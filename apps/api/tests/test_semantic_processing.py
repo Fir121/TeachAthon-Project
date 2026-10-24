@@ -379,7 +379,7 @@ def test_semantic_recording_match_uses_neighbours_before_judging(room, monkeypat
                 dict(
                     request_id=data["requests"][0]["id"],
                     source_id=window["id"],
-                    coverage="full",
+                    relevance="direct",
                     reason="Explains the scaling",
                 )
             ]
@@ -395,7 +395,8 @@ def test_semantic_recording_match_uses_neighbours_before_judging(room, monkeypat
     assert len(seen) == 1 and s.get(f"/api/v1/questions/{posted['id']}").json()["match"]["state"] == "unavailable"
 
 
-def test_partial_multi_request_match_never_claims_a_complete_answer(room, monkeypatch):
+@pytest.mark.parametrize("relevant", [True, False])
+def test_direct_response_to_one_request_is_visible_without_complete_answer_grading(room, monkeypatch, relevant):
     t, s, _, factory, cid, _, sid, _ = room
     posted = post_question(s, cid, sid, "Explain irradiance and systems design")
     with factory() as db:
@@ -419,11 +420,16 @@ def test_partial_multi_request_match_never_claims_a_complete_answer(room, monkey
             answers=[
                 dict(
                     request_id=data["requests"][0]["id"],
-                    source_id=data["windows"][0]["id"],
-                    coverage="full",
+                    source_id=data["windows"][0]["id"] if relevant else None,
+                    relevance="direct" if relevant else "not_relevant",
                     reason="Definition",
                 ),
-                dict(request_id=data["requests"][1]["id"], source_id=None, coverage="none", reason="No explanation"),
+                dict(
+                    request_id=data["requests"][1]["id"],
+                    source_id=None,
+                    relevance="not_relevant",
+                    reason="No explanation",
+                ),
             ]
         )
 
@@ -432,10 +438,15 @@ def test_partial_multi_request_match_never_claims_a_complete_answer(room, monkey
     with factory() as db:
         asyncio.run(match_excerpt(db, posted["id"]))
         q = db.get(Question, posted["id"])
-        assert q.state == "answered" and q.match_json["state"] == "partial"
-    assert t.get(f"/api/v1/questions/{posted['id']}").json()["match"]["state"] == "partial"
+        assert q.state == "answered" and q.match_json["state"] == ("ready" if relevant else "unavailable")
+        assert "coverage" not in q.match_json
+    assert t.get(f"/api/v1/questions/{posted['id']}").json()["match"]["state"] == (
+        "ready" if relevant else "unavailable"
+    )
     public = s.get(f"/api/v1/questions/{posted['id']}").json()
-    assert public["match"]["state"] == "unavailable" and public["recording_answer"]
+    assert public["match"]["state"] == ("ready" if relevant else "unavailable") and public["recording_answer"]
+    if relevant:
+        assert public["match"]["url"]
 
 
 @pytest.mark.parametrize("mode", ["uncertain", "different_need", "missing_request", "missing_member"])
@@ -705,3 +716,44 @@ def test_failed_match_job_preserves_a_concurrent_human_selection(room, monkeypat
         with pytest.raises(RuntimeError, match="Authored provider failure"):
             intelligence.match_job(db, SimpleNamespace(target_id=qid))
         assert db.get(Question, qid).match_json == selected
+
+
+def test_older_partial_response_is_queued_for_binary_reassessment_without_review(room):
+    from app.ai.grouping import queue_semantic_backfill
+
+    teacher, student, _, factory, cid, _, sid, _ = room
+    qid = post_question(student, cid, sid, "What is integration?")["id"]
+    with factory() as db:
+        q = db.get(Question, qid)
+        q.state = "answered"
+        q.match_json = {"state": "partial", "version": "semantic-window-coverage-v1", "coverage": "partial"}
+        session = db.get(LiveSession, sid)
+        session.state, session.recording_enabled, session.recording_state = "ended", True, "ready"
+        db.commit()
+        queue_semantic_backfill(db)
+        queue_semantic_backfill(db)
+        jobs = list(db.scalars(select(Job).where(Job.target_id == qid, Job.type == "match_answer_excerpt")))
+        assert len(jobs) == 1
+        assert db.get(Question, qid).state == "answered"
+    for client in [teacher, student]:
+        match = client.get(f"/api/v1/questions/{qid}").json()["match"]
+        assert match["state"] == "pending" and "coverage" not in match
+
+
+def test_recording_schema_has_only_direct_or_not_relevant_decisions():
+    from app.ai.recording_matches import RequestRelevance
+    from pydantic import ValidationError
+
+    for grade in ["full", "partial", "none"]:
+        with pytest.raises(ValidationError):
+            RequestRelevance(request_id="q", source_id="window", relevance=grade, reason="Old grading is not supported")
+    assert (
+        RequestRelevance(
+            request_id="q", source_id="window", relevance="direct", reason="A response was given"
+        ).relevance
+        == "direct"
+    )
+    assert (
+        RequestRelevance(request_id="q", source_id=None, relevance="not_relevant", reason="Question only").source_id
+        is None
+    )

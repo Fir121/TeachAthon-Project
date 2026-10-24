@@ -152,18 +152,20 @@ def question_json(db, q, user, teacher):
     if (
         match.get("state") == "ready"
         and not match.get("lecturer_selected")
-        and match.get("version") != "semantic-window-coverage-v1"
+        and match.get("version") not in {"semantic-window-coverage-v1", "semantic-direct-response-v2"}
     ):
         match = (
             {
                 **match,
                 "state": "legacy",
-                "message": "Earlier suggested passage; complete answer coverage has not been rechecked.",
+                "message": "Earlier suggested passage; response relevance has not been rechecked.",
             }
             if teacher
             else {"state": "unavailable"}
         )
-    elif not teacher and match.get("possibly_addressed"):
+    elif match.get("state") == "partial":
+        match = {"state": "pending", "message": "Finding the lecturer’s response in the recording."}
+    elif not teacher and (match.get("possibly_addressed") or q.state != "answered"):
         match = {"state": "unavailable"}
     return {
         "id": q.id,

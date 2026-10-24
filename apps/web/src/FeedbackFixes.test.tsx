@@ -164,7 +164,7 @@ test("answered questions offer the whole recording without inventing an exact ti
     screen.getByText(/an exact answer timestamp is not available/),
   ).toBeVisible();
   expect(
-    screen.queryByRole("link", { name: /Suggested recording excerpt/ }),
+    screen.queryByRole("link", { name: /Lecturer’s response/ }),
   ).not.toBeInTheDocument();
 });
 
@@ -181,7 +181,7 @@ test("a precise excerpt takes precedence over the whole-lecture fallback", () =>
     />,
   );
   expect(
-    screen.getByRole("link", { name: /Suggested recording excerpt/ }),
+    screen.getByRole("link", { name: /Lecturer’s response/ }),
   ).toHaveAttribute("href", "/recordings/session?t=5000");
   expect(
     screen.queryByRole("link", { name: "Search lecture" }),
@@ -302,46 +302,27 @@ test("a lone question is an ordinary card even if a stale response still has a g
   expect(screen.queryByText("Old group heading")).not.toBeInTheDocument();
 });
 
-test("partial answer coverage stays a lecturer review and keeps the whole recording link", () => {
-  const partial: Question = {
-    ...question,
-    match: {
-      state: "partial",
-      coverage: "partial",
-      excerpts: [
-        {
-          url: "/recordings/session?t=1000",
-          start_ms: 1000,
-          end_ms: 4000,
-          request_ids: ["a"],
-        },
-      ],
-    },
-  };
-  const view = wrap(
-    <QuestionCard question={partial} teacher open={false} onOpen={() => {}} />,
-  );
-  expect(screen.getByText(/A complete answer was not verified/)).toBeVisible();
-  expect(
-    screen.getByRole("link", { name: /Review related passage 1/ }),
-  ).toHaveAttribute("href", "/recordings/session?t=1000");
-  expect(screen.getByRole("link", { name: "Search lecture" })).toBeVisible();
-  view.unmount();
+test("a directly relevant lecturer response is shown to students without review", () => {
   wrap(
     <QuestionCard
-      question={partial}
+      question={{
+        ...question,
+        match: { state: "ready", url: "/recordings/session?t=1000" },
+      }}
       teacher={false}
       open={false}
       onOpen={() => {}}
     />,
   );
   expect(
-    screen.queryByRole("link", { name: /Review related passage/ }),
-  ).not.toBeInTheDocument();
-  expect(screen.getByRole("link", { name: "Search lecture" })).toBeVisible();
+    screen.getByRole("link", { name: /Lecturer’s response/ }),
+  ).toHaveAttribute("href", "/recordings/session?t=1000");
+  expect(
+    screen.queryByText(/complete answer|Review related passage/),
+  ).toBeNull();
 });
 
-test("a complete multi-request answer offers all actual recording passages", () => {
+test("multiple relevant responses offer all actual recording passages", () => {
   wrap(
     <QuestionCard
       question={{
@@ -349,7 +330,6 @@ test("a complete multi-request answer offers all actual recording passages", () 
         match: {
           state: "ready",
           url: "/recordings/session?t=1000",
-          coverage: "complete",
           excerpts: [
             {
               url: "/recordings/session?t=1000",
@@ -372,10 +352,10 @@ test("a complete multi-request answer offers all actual recording passages", () 
     />,
   );
   expect(
-    screen.getByRole("link", { name: /Suggested recording excerpt 1/ }),
+    screen.getByRole("link", { name: /Lecturer’s response 1/ }),
   ).toHaveAttribute("href", "/recordings/session?t=1000");
   expect(
-    screen.getByRole("link", { name: /Suggested recording excerpt 2/ }),
+    screen.getByRole("link", { name: /Lecturer’s response 2/ }),
   ).toHaveAttribute("href", "/recordings/session?t=5000");
   expect(
     screen.queryByRole("link", { name: "Search lecture" }),

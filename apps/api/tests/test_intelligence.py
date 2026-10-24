@@ -58,7 +58,10 @@ def test_unmarked_match_suggestion_never_resolves_or_leaks_to_student(room, monk
         return ExcerptSelection(
             answers=[
                 dict(
-                    request_id=f"{q['id']}:whole", source_id=tid, coverage="full", reason="explains logarithmic halving"
+                    request_id=f"{q['id']}:whole",
+                    source_id=tid,
+                    relevance="direct",
+                    reason="explains logarithmic halving",
                 )
             ]
         )

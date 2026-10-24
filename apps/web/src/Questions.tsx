@@ -63,7 +63,6 @@ export type Question = {
     end_ms?: number;
     excerpt?: string;
     possibly_addressed?: boolean;
-    coverage?: string;
     excerpts?: {
       url: string;
       start_ms: number;
@@ -604,24 +603,24 @@ export function QuestionCard({
                       href={excerpt.url}
                       className="text-button"
                     >
-                      Suggested recording excerpt {index + 1} ↗
+                      Lecturer’s response {index + 1} ↗
                     </a>
                   ))
                 ) : (
                   <a href={q.match.url} className="text-button">
                     {q.match.state === "legacy"
                       ? "Earlier suggested passage · review ↗"
-                      : "Suggested recording excerpt ↗"}
+                      : "Lecturer’s response ↗"}
                   </a>
                 )}
                 {teacher && (
                   <>
                     <p className="muted small">
                       {q.match.state === "legacy"
-                        ? "Complete answer coverage has not been rechecked."
+                        ? "Response relevance has not been rechecked."
                         : q.match.possibly_addressed
-                          ? "Possibly addressed · review before marking answered"
-                          : "Suggested match to actual recorded speech"}
+                          ? "Response found · question remains unanswered"
+                          : "Response found in actual recorded speech"}
                     </p>
                     <button
                       className="danger"
@@ -673,26 +672,9 @@ export function QuestionCard({
                 )}
               </div>
             )}
-          {teacher && q.match.state === "partial" && (
-            <div className="spaced">
-              <p className="muted small">
-                Related passages were found for some requests. A complete answer
-                was not verified.
-              </p>
-              {q.match.excerpts?.map((excerpt, index) => (
-                <a key={excerpt.url} href={excerpt.url} className="text-button">
-                  Review related passage {index + 1} ↗
-                </a>
-              ))}
-              <button className="danger" onClick={() => removeMatch.mutate()}>
-                Remove suggested passages
-              </button>
-            </div>
-          )}
           {teacher &&
             q.session_id &&
             (q.match.state === "legacy" ||
-              q.match.state === "partial" ||
               (q.recording_answer?.state === "ready" &&
                 q.match.state !== "pending")) && (
               <button

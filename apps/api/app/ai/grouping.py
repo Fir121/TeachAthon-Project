@@ -273,10 +273,13 @@ def queue_semantic_backfill(db):
         )
     ):
         match = question.match_json or {}
-        # Legacy ready links may include unlabelled human corrections. Preserve them
-        # for explicit lecturer recheck, and never restore a removed suggestion.
+        # Preserve unversioned ready links that may include old human corrections.
+        # Reassess earlier automatic coverage decisions; never restore removed/manual links.
         if (
-            match.get("state") in {"pending", "unavailable"}
+            (
+                match.get("state") in {"pending", "unavailable", "partial"}
+                or (match.get("state") == "ready" and match.get("version") == "semantic-window-coverage-v1")
+            )
             and not match.get("lecturer_selected")
             and match.get("version") != MATCH_VERSION
         ):

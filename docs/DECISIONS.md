@@ -130,3 +130,8 @@
 - Integrated slide workspace, explicit multi-slide selection/generation, per-slide real job feedback, ready-list entry to review and no background auto-opening.
 - Approve and next after a running preview replaces the extra checkbox. In-place refinement and explicit replacement review preserve current approvals. Source reference stays compact and expandable; start remains independent.
 - A full-viewport laptop canvas/context sidebar replaces the tall stacked viewer. Shared frame execution/security is separate from presentation. New generated HTML follows a structurally validated responsive-v2 visual/controls convention with trusted layout CSS; published/legacy code is not rewritten. No migration or batch endpoint.
+
+
+## Binary recording-response relevance — 2026-10-24
+
+Owner replaced full/partial/none answer-quality assessment with direct/not_relevant response matching. Repeating or identifying a question and giving some attempted answer is enough; correctness, depth and exhaustiveness are not graded. Mere acknowledgement or repetition without a recorded answer is not enough. Any relevant response to a multipart question can be linked without lecturer review of partial coverage. Human answered state, private permissions and optional removal/correction remain independent. Versioned automatic reassessment updates earlier coverage-model associations while protecting manual and removed links.

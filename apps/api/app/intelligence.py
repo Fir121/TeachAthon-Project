@@ -420,7 +420,7 @@ def edit_match(qid: str, data: MatchEdit, db: DB, user: Actor):
         "source_id": segment.id,
         "excerpt": segment.text,
         "url": f"/recordings/{q.session_id}?t={data.start_ms}",
-        "label": "Suggested excerpt",
+        "label": "Lecturer’s response",
         "possibly_addressed": q.state != "answered",
     }
     question_event(db, q, "question.updated")
