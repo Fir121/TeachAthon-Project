@@ -4,7 +4,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Expand,
-  Sparkles,
+  Lightbulb,
   Check,
   LoaderCircle,
 } from "lucide-react";
@@ -532,7 +532,7 @@ export function DiagramPreparation({
             disabled={locked || !!analysing}
             onClick={() => analysis.mutate()}
           >
-            <Sparkles size={16} />
+            <Lightbulb size={16} />
             {analysis.isPending
               ? "Starting analysis…"
               : "Find interactive opportunities"}
@@ -734,7 +734,7 @@ export function DiagramPreparation({
                   )}
                   {suggested && (
                     <span className="diagram-suggested">
-                      <Sparkles size={11} />
+                      <Lightbulb size={11} />
                       Suggested
                     </span>
                   )}

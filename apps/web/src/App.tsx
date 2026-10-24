@@ -30,6 +30,7 @@ import Live, { LectureSetup, Join, Invite } from "./Live";
 import Replay from "./Replay";
 import ResourcePlayer from "./ResourcePlayer";
 import ImageUpload from "./ImageUpload";
+import Brand from "./Brand";
 export function ErrorBox({ error }: { error: Error | null }) {
   return error ? (
     <p role="alert" className="error">
@@ -56,12 +57,7 @@ export function Auth() {
   return (
     <main className="auth-layout">
       <section className="auth-story">
-        <Link to="/" className="brand">
-          <span className="brand-icon">
-            <BookOpen size={23} />
-          </span>
-          LectureLoop
-        </Link>
+        <Brand />
         <div>
           <span className="eyebrow">A LITTLE MORE CONNECTION</span>
           <h1>
@@ -330,12 +326,7 @@ export default function App() {
   return (
     <>
       <header className="topbar">
-        <Link to="/" className="brand">
-          <span className="brand-icon">
-            <BookOpen size={21} />
-          </span>
-          LectureLoop
-        </Link>
+        <Brand />
         <div className="account">
           <button
             className="avatar avatar-button"

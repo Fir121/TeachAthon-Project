@@ -86,3 +86,34 @@ Diagram reopening refinement (2026-10-24): the automatic first-time activity inv
 
 
 Recording response matching update — 2026-10-24: the matcher now uses only `direct` / `not_relevant` relevance decisions. No full/partial grading or completeness-based lecturer-review state is produced. Any direct question-and-response passage yields ready links for authorized students once the lecturer has marked the question answered, even if other requests have no match. Links are labelled Lecturer’s response; correctness/exhaustiveness are not evaluated. Existing source/time validation, private boundaries, optional correction/removal and whole-recording fallback remain. Older automatic coverage-model associations are queued for binary reassessment; old partial DTOs appear pending during processing. Manual/removed associations are protected. Match metadata records `semantic-direct-response-v2` and per-request relevance instead of coverage.
+
+## Academic visual identity — 2026-10-24
+
+LectureLoop has its own navy/white academic identity, inspired by Edinburgh's setting without claiming institutional affiliation. The supplied original open-loop mark represents teaching and the return flow of participation; no university crest, roundel or institutional wordmark is used.
+
+The canonical CSS palette lives in `apps/web/src/style.css` at `:root`:
+
+| Purpose | Token / value |
+| --- | --- |
+| Primary identity, headings, solid primary actions | `--brand-navy: #041E42` (hover `#10325B`) |
+| Restrained brand rule and selected indicators | `--brand-red: #D50032` |
+| Source links, exploration, keyboard focus | `--brand-blue` / `--focus-ring: #007288` |
+| Body / secondary text | `--text-primary: #243247` / `--text-muted: #586578` |
+| Canvas / cards / quiet panels | `--surface-canvas: #F7F8FA` / `--surface-primary: #FFFFFF` / `--surface-subtle: #F0F3F7` |
+| Card dividers / interactive boundaries | `--border-default: #DEE4EB` / `--border-control: #7C8A9B` |
+| Success / warning / danger | `#166247` / `#946200` / `#A51B36`, each with a pale semantic surface |
+
+`--accent`, `--line` and `--muted` alias the semantic tokens for existing components. Selected surfaces use a pale slate; exploration uses a pale blue. Ready/Approved stays semantic green, Ready to review blue, queued/processing amber and failures burgundy, with existing explicit labels/icons. Poll confidence levels retain their meaningful green/amber/orange/danger cues. Decorative green is removed from app chrome. Annotation ink, uploaded imagery and slide pixels, and isolated generated content retain their original colours.
+
+The auth split screen uses a navy story panel with a short scarlet rule and the existing sign-in/signup form. Other screens keep white cards, cool neutral canvas, navy headings/actions and restrained selected details. Cards use 10–12px corners without hover movement; shadows are limited to modal elevation and document paper. Existing Inter-first/system typography remains; functional copy has a 14px floor, with modest label tracking. Controls have readable disabled states, stronger boundaries and a 3px blue focus outline (with a white halo on the navy auth panel). Active tabs keep an underline and stronger weight; selected polls keep their check icon, votes use stronger weight/inset detail, and current replay/diagram controls have an inset indicator. Status meaning continues to have textual labels.
+
+Shared declarations are consolidated into their owning selectors instead of accumulating theme overrides. Responsive breakpoints, history-backed dialogs, viewport-filling diagram canvases and scrolling sidebars remain. Controls wrap where needed on narrow screens; profile, icon and poll actions retain at least 44px targets. Diagram opportunity cues use a teaching lightbulb rather than sparkles. The main stylesheet never enters the diagram iframe. This refresh changes presentation only: existing source preflight, preparation/approval, activity invitations, privacy, recording and replay interactions remain as documented above.
+
+
+## Original product mark — 2026-10-24
+
+`Brand.tsx` is the single homepage-link identity used by both Auth and the authenticated topbar. It loads `/brand/lectureloop-mark.svg` with an empty alt and `aria-hidden`, followed by the single readable name LectureLoop in the normal UI font, with heavier Lecture and lighter Loop matching the supplied lockup. Course/lesson BookOpen icons remain illustrations. The mark has a 44px square clear area (the visible vector is about 33px tall), cannot shrink, and keeps its navy/red paths unchanged. On the navy auth panel a flat white tile preserves the original colours while the surrounding wordmark reverses to white. No filter, gradient, shadow or extra header slogan is applied. Existing home navigation, 44px link target and keyboard focus remain.
+
+Source of truth: `lectureloop-brand-kit/lectureloop-mark.svg` and `lectureloop-logo.svg`, copied byte-for-byte into `apps/web/public/brand/`. The supplied kit contains only these vectors and a reference preview PNG; it has no dark lockup, favicon exports or token stylesheet. The app uses the original standalone mark plus UI text instead of inventing a reversed vector. Derived `favicon.svg` adds only a white rounded background behind the unchanged original paths so both strokes remain legible on light/dark browser tabs. The 16/32px PNG favicons, 180px Apple touch icon and 192/512px icons are direct browser raster exports of that SVG, with no redrawing or generative imagery. The preview PNG is not deployed.
+
+The HTML title is LectureLoop | Connected lectures; navy theme colour, SVG favicon, 16/32px PNG fallback links and Apple touch icon use stable `/brand/` public URLs. No existing PWA manifest or OpenGraph identity was found, and neither is added. The 192/512px icons are static assets only.

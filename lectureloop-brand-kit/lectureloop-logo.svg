@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 390 72" role="img" aria-labelledby="title desc">
+ <title id="title">LectureLoop</title><desc id="desc">LectureLoop wordmark with a two-colour open-loop symbol.</desc>
+ <g transform="translate(0 2)">
+  <path fill="#041E42" d="M17 9H47L35 21H23C21.3 21 20 22.3 20 24V43H30L18 55 9 46V17C9 12.6 12.6 9 17 9Z"/>
+  <path fill="#D50032" d="M50 9 61 20V49C61 55.6 56.6 60 50 60H18L30 48H48C49.1 48 50 47.1 50 46V24H39L50 13Z"/>
+ </g>
+ <text x="82" y="48" fill="#041E42" font-family="Inter,Arial,Helvetica,sans-serif" font-size="38" letter-spacing="-1.6"><tspan font-weight="750">Lecture</tspan><tspan font-weight="500">Loop</tspan></text>
+</svg>
